@@ -42,6 +42,7 @@ static inline double elapsed() {
 // ---------------------------------------------------------------------------
 static constexpr double TIME_LIMIT = 28.0;
 static constexpr double EPS        = 1e-6;
+static constexpr double SAT_EPS    = 0.5;  // safety margin for SAT overlap (validator cross-compat)
 
 // ---------------------------------------------------------------------------
 // Fast RNG: xoshiro256**
@@ -121,6 +122,10 @@ static bool sat_overlap(const Quad &a, const Quad &b) {
             int j = (i + 1) & 3;
             double nx = poly[j][1] - poly[i][1];
             double ny = poly[i][0] - poly[j][0];
+            double len = std::sqrt(nx*nx + ny*ny);
+            if (len < 1e-9) continue;
+            nx /= len; ny /= len;
+
             double a_min = std::numeric_limits<double>::infinity();
             double a_max = -std::numeric_limits<double>::infinity();
             double b_min = std::numeric_limits<double>::infinity();
@@ -135,7 +140,9 @@ static bool sat_overlap(const Quad &a, const Quad &b) {
                 if (v < b_min) b_min = v;
                 if (v > b_max) b_max = v;
             }
-            if (a_max <= b_min + EPS || b_max <= a_min + EPS) return false;
+            // If the gap is more than 0.1 units, they are separated.
+            // Otherwise, we treat them as overlapping to be safe.
+            if (a_max <= b_min - 0.1 || b_max <= a_min - 0.1) return false;
         }
     }
     return true;
@@ -380,7 +387,8 @@ public:
     Grid grid;
     std::unordered_map<int, PlacedBay> bays;
     std::unordered_set<int> active;
-    double sum_eff  = 0.0;
+    double sum_prices = 0.0;
+    int    sum_loads  = 0;
     double sum_area = 0.0;
     double wh_area;
     int    next_idx = 0;
@@ -458,9 +466,10 @@ public:
     }
 
     double quality() const {
-        if (active.empty()) return 1e18;
+        if (active.empty() || sum_loads == 0) return 1e18;
+        double ratio = sum_prices / sum_loads;
         double exp = 2.0 - (sum_area / wh_area);
-        return std::pow(sum_eff, exp);
+        return std::pow(ratio, exp);
     }
 
     bool feasible(const BayType &bt, double x, double y, double rot, int excl = -1) {
@@ -526,7 +535,8 @@ public:
         bays[idx] = pb;
         active.insert(idx);
         grid.insert(idx, qx1, qy1, qx2, qy2);
-        sum_eff  += bt.efficiency;
+        sum_prices += bt.price;
+        sum_loads  += bt.nLoads;
         sum_area += bt.width * bt.depth;  // no gap
         return idx;
     }
@@ -537,7 +547,8 @@ public:
         const BayType &bt = bay_types[pb.type_id];
         grid.remove(idx, pb.x1, pb.y1, pb.x2, pb.y2);
         active.erase(idx);
-        sum_eff  -= bt.efficiency;
+        sum_prices -= bt.price;
+        sum_loads  -= bt.nLoads;
         sum_area -= bt.width * bt.depth;  // no gap
         return pb;
     }
@@ -568,7 +579,8 @@ public:
         active.insert(idx);
         grid.insert(idx, pb.x1, pb.y1, pb.x2, pb.y2);
         const BayType &bt = bay_types[pb.type_id];
-        sum_eff  += bt.efficiency;
+        sum_prices += bt.price;
+        sum_loads  += bt.nLoads;
         sum_area += bt.width * bt.depth;  // IMPORTANT: no gap, not AABB
     }
 };
@@ -580,8 +592,10 @@ static void greedy(State &state, double time_limit) {
     double t0 = elapsed();
 
     std::vector<int> sorted_idx;
-    for (int i = 0; i < (int)state.bay_types.size(); ++i)
-        sorted_idx.push_back(i);
+    for (int i = 0; i < (int)state.bay_types.size(); ++i) {
+        if (state.bay_types[i].width > 0)
+            sorted_idx.push_back(i);
+    }
     std::sort(sorted_idx.begin(), sorted_idx.end(), [&](int a, int b) {
         return state.bay_types[a].efficiency < state.bay_types[b].efficiency;
     });
@@ -733,20 +747,25 @@ static double sa(State &state, double time_limit) {
     int n_types = (int)bay_types.size();
 
     // Efficiency-weighted type selection
-    std::vector<double> cum_w(n_types);
-    double wtot = 0;
-    for (auto &bt : bay_types) wtot += bt.nLoads / bt.price;
-    double acc = 0;
+    std::vector<int> valid_ids;
     for (int i = 0; i < n_types; ++i) {
-        acc += (bay_types[i].nLoads / bay_types[i].price) / wtot;
+        if (bay_types[i].width > 0) valid_ids.push_back(i);
+    }
+    
+    std::vector<double> cum_w(valid_ids.size());
+    double wtot = 0;
+    for (int id : valid_ids) wtot += (double)bay_types[id].nLoads / bay_types[id].price;
+    double acc = 0;
+    for (int i = 0; i < (int)valid_ids.size(); ++i) {
+        acc += ((double)bay_types[valid_ids[i]].nLoads / bay_types[valid_ids[i]].price) / wtot;
         cum_w[i] = acc;
     }
-    cum_w.back() = 1.0;
+    if (!cum_w.empty()) cum_w.back() = 1.0;
 
     auto pick_type = [&]() -> int {
         double r = rng.rand01();
-        for (int i = 0; i < n_types; ++i) if (r <= cum_w[i]) return i;
-        return n_types - 1;
+        for (int i = 0; i < (int)valid_ids.size(); ++i) if (r <= cum_w[i]) return valid_ids[i];
+        return valid_ids.back();
     };
 
     // Sample T0
@@ -1242,8 +1261,8 @@ int main(int argc, char **argv) {
     auto bt_raw   = parse_csv(argv[4], 7);
     std::string out_path = argv[5];
 
-    // Build bay types
-    std::vector<BayType> bay_types;
+    // Build bay types — deduplicate by id (last-wins, matching Python validator)
+    std::unordered_map<int, BayType> bt_map;
     for (auto &r : bt_raw) {
         BayType bt;
         bt.id         = (int)r[0];
@@ -1252,8 +1271,13 @@ int main(int argc, char **argv) {
         bt.nLoads     = (int)r[5]; bt.price = r[6];
         bt.threshold  = bt.height;
         bt.efficiency = (bt.nLoads > 0) ? bt.price / bt.nLoads : 1e18;
-        bay_types.push_back(bt);
+        bt_map[bt.id] = bt;  // last-wins on duplicate IDs
     }
+    // Build vector indexed by id
+    int max_id = 0;
+    for (auto &[id, _] : bt_map) max_id = std::max(max_id, id);
+    std::vector<BayType> bay_types(max_id + 1);
+    for (auto &[id, bt] : bt_map) bay_types[id] = bt;
 
     Warehouse wh; wh.build(wh_raw);
     Ceiling   ceil; ceil.build(ceil_raw);
