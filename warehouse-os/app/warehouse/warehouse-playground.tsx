@@ -99,6 +99,8 @@ function UploadCard({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+export type ViewMode = "3d" | "floor_plan"
+
 export function WarehousePlayground() {
   const [uploads, setUploads] = useState<UploadState>(EMPTY_UPLOADS)
   const [parsedData, setParsedData] = useState<ParsedData | null>(null)
@@ -112,6 +114,8 @@ export function WarehousePlayground() {
   // New state for exterior visibility control
   const [exteriorMode, setExteriorMode] = useState<ExteriorMode>("auto")
   const [isExteriorMenuOpen, setIsExteriorMenuOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>("3d")
+  const [algorithm, setAlgorithm] = useState<"python" | "cpp">("cpp")
 
   const allUploaded = Object.values(uploads).every(v => v !== null)
 
@@ -124,8 +128,14 @@ export function WarehousePlayground() {
 
     async function run() {
       try {
-        setLoadingMessage("Running solver (~30 s)…")
-        const world = await solve(uploads as Required<UploadState>)
+        setLoadingMessage(`Running ${algorithm === "cpp" ? "C++" : "Python"} solver…`)
+        const world = await solve({ 
+          warehouse: uploads.warehouse!, 
+          obstacles: uploads.obstacles || "", 
+          ceiling: uploads.ceiling!, 
+          bays: uploads.bays!,
+          algorithm 
+        })
         if (cancelled) return
 
         const { polygon, obstacles, ceilingProfile, placedBays, bayTypes } = mapWorldToScene(world)
@@ -195,7 +205,7 @@ export function WarehousePlayground() {
     return (
       <div
         className="relative h-svh w-full overflow-hidden"
-        style={{ background: "linear-gradient(to bottom, #76d0f5 0%, #f4f8fa 100%)" }}
+        style={{ background: viewMode === "3d" ? "linear-gradient(to bottom, #76d0f5 0%, #f4f8fa 100%)" : "#f8fafc" }}
       >
         {/* R3F canvas fills the screen */}
         <div className="absolute inset-0">
@@ -211,6 +221,7 @@ export function WarehousePlayground() {
             onSelectBay={handleSelectBay}
             onClearSelection={handleClearSelection}
             exteriorMode={exteriorMode}
+            viewMode={viewMode}
           />
         </div>
 
@@ -229,7 +240,7 @@ export function WarehousePlayground() {
           </button>
         </div>
 
-        {/* ── Status chip ─────────────────────────────────────────────────── */}
+        {/* ── Status chip + Exterior Controls (unified right panel) ─────────── */}
         <div className="pointer-events-none absolute top-4 right-4 z-20 flex flex-col items-end gap-2">
           <div
             className="rounded-full border px-3 py-1 text-xs font-medium tracking-wide backdrop-blur"
@@ -249,46 +260,46 @@ export function WarehousePlayground() {
               color: "#3b82f6",
             }}
           >
-            {parsedData.placedBays.length} / {parsedData.bayTypes.reduce((s, t) => s + t.count, 0)} bays placed
+            {parsedData.placedBays.length} bays placed
           </div>
-        </div>
 
-        {/* ── Exterior Controls ────────────────────────────────────────────── */}
-        <div className="pointer-events-auto absolute top-24 right-4 z-20 flex flex-col items-end">
-          <button
-            onClick={() => setIsExteriorMenuOpen(prev => !prev)}
-            className="rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
-            style={{
-              borderColor: "rgba(15,23,42,0.15)",
-              background: "rgba(255,255,255,0.6)",
-              color: "rgba(15,23,42,0.8)",
-            }}
-          >
-            Exterior: <span className="capitalize">{exteriorMode}</span> ▾
-          </button>
-          
-          {isExteriorMenuOpen && (
-            <div className="mt-2 flex flex-col overflow-hidden rounded-lg border backdrop-blur"
+          {/* Exterior dropdown — directly below, no gap */}
+          <div className="pointer-events-auto flex flex-col items-end">
+            <button
+              onClick={() => setIsExteriorMenuOpen(prev => !prev)}
+              className="rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
               style={{
                 borderColor: "rgba(15,23,42,0.15)",
-                background: "rgba(255,255,255,0.8)",
+                background: "rgba(255,255,255,0.6)",
+                color: "rgba(15,23,42,0.8)",
               }}
             >
-              {(["auto", "hidden", "translucent"] as ExteriorMode[]).map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => { setExteriorMode(mode); setIsExteriorMenuOpen(false) }}
-                  className="px-4 py-2 text-sm text-left hover:bg-black/5 capitalize transition-colors"
-                  style={{
-                    color: exteriorMode === mode ? "#000" : "rgba(15,23,42,0.7)",
-                    fontWeight: exteriorMode === mode ? 600 : 400
-                  }}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
-          )}
+              Exterior: <span className="capitalize">{exteriorMode}</span> ▾
+            </button>
+
+            {isExteriorMenuOpen && (
+              <div className="mt-2 flex flex-col overflow-hidden rounded-lg border backdrop-blur"
+                style={{
+                  borderColor: "rgba(15,23,42,0.15)",
+                  background: "rgba(255,255,255,0.8)",
+                }}
+              >
+                {(["auto", "hidden", "translucent"] as ExteriorMode[]).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => { setExteriorMode(mode); setIsExteriorMenuOpen(false) }}
+                    className="px-4 py-2 text-sm text-left hover:bg-black/5 capitalize transition-colors"
+                    style={{
+                      color: exteriorMode === mode ? "#000" : "rgba(15,23,42,0.7)",
+                      fontWeight: exteriorMode === mode ? 600 : 400
+                    }}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Info panel — shown when a bay is selected ──────────────────── */}
@@ -300,6 +311,43 @@ export function WarehousePlayground() {
             />
           </div>
         )}
+
+        {/* ── Picture-in-Picture Mini-Map ─────────────────────────────────── */}
+        <div 
+          className="pointer-events-auto absolute bottom-6 right-6 z-30 h-48 w-48 overflow-hidden rounded-2xl border-4 shadow-2xl transition-transform hover:scale-105 active:scale-95 sm:h-64 sm:w-64"
+          style={{ 
+            borderColor: "white", 
+            background: viewMode === "3d" ? "#f8fafc" : "linear-gradient(to bottom, #76d0f5 0%, #f4f8fa 100%)",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)"
+          }}
+        >
+          {/* We render a second tiny scene instance with the INVERTED viewMode */}
+          <WarehouseScene
+            polygon={parsedData.polygon}
+            obstacles={parsedData.obstacles}
+            ceilingProfile={parsedData.ceilingProfile}
+            placedBays={parsedData.placedBays}
+            introPhase="interactive" // Skip the camera intro animation!
+            introStartMs={0}
+            onIntroDone={() => {}}
+            selectedBayId={null} // Don't highlight selections in the mini map
+            onSelectBay={() => {}}
+            onClearSelection={() => {}}
+            exteriorMode={exteriorMode}
+            viewMode={viewMode === "3d" ? "floor_plan" : "3d"}
+            isMiniMap={true}
+          />
+          
+          {/* Invisible interactive overlay to intercept all clicks and prevent orbit control panning */}
+          <button
+            className="absolute inset-0 h-full w-full cursor-pointer focus:outline-none"
+            title={`Switch to ${viewMode === "3d" ? "Floor Plan" : "3D"} View`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setViewMode(v => v === "3d" ? "floor_plan" : "3d");
+            }}
+          />
+        </div>
       </div>
     )
   }
@@ -319,6 +367,25 @@ export function WarehousePlayground() {
           <p className="mt-2 text-sm" style={{ color: "rgba(15,23,42,0.6)" }}>
             Upload your four CSV files to build the 3D scene
           </p>
+        </div>
+
+        {/* Algorithm Selection */}
+        <div className="flex items-center justify-center gap-4">
+          <span className="text-sm font-medium text-slate-700">Algorithm:</span>
+          <div className="flex rounded bg-white/40 p-1 border" style={{ borderColor: "rgba(15,23,42,0.2)" }}>
+            <button
+              onClick={() => setAlgorithm("cpp")}
+              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${algorithm === "cpp" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+            >
+              C++ (Fast)
+            </button>
+            <button
+              onClick={() => setAlgorithm("python")}
+              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${algorithm === "python" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+            >
+              Python
+            </button>
+          </div>
         </div>
 
         {/* Quick-load test cases */}

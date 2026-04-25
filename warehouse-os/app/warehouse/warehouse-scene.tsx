@@ -1,8 +1,8 @@
 "use client"
 
 import { useRef, useMemo, useCallback } from "react"
-import { Canvas, useFrame } from "@react-three/fiber"
-import { OrbitControls } from "@react-three/drei"
+import { Canvas, useFrame, useThree } from "@react-three/fiber"
+import { OrbitControls, OrthographicCamera } from "@react-three/drei"
 import { MOUSE } from "three"
 import {
   computeWarehouseBounds,
@@ -59,6 +59,21 @@ function IntroCameraController({
   return null
 }
 
+function FloorPlanCamera({ cx, cz, maxDim }: { cx: number; cz: number; maxDim: number }) {
+  const { size } = useThree()
+  const zoom = Math.min(size.width, size.height) / (maxDim * 1.2)
+  return (
+    <OrthographicCamera
+      makeDefault
+      position={[cx, 1000, cz]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      zoom={zoom}
+      near={0.1}
+      far={2000}
+    />
+  )
+}
+
 export type ExteriorMode = "auto" | "hidden" | "translucent"
 
 type Props = {
@@ -72,14 +87,18 @@ type Props = {
   selectedBayId: string | null
   onSelectBay: (bayId: string) => void
   onClearSelection: () => void
-  exteriorMode: ExteriorMode
+  exteriorMode?: ExteriorMode
+  viewMode?: "3d" | "floor_plan"
+  isMiniMap?: boolean
 }
 
 export function WarehouseScene({
   polygon, obstacles, ceilingProfile, placedBays,
   introPhase, introStartMs, onIntroDone,
   selectedBayId, onSelectBay, onClearSelection,
-  exteriorMode,
+  exteriorMode = "auto",
+  viewMode = "3d",
+  isMiniMap = false,
 }: Props) {
   const bounds = useMemo(() => computeWarehouseBounds(polygon), [polygon])
   const [cx, cz] = useMemo(() => computeWarehouseCentroid(polygon), [polygon])
@@ -108,10 +127,13 @@ export function WarehouseScene({
 
   return (
     <Canvas
-      camera={{ position: initPos, fov: 45, near: 0.1, far: 3000 }}
-      shadows
-      dpr={[1, 1.5]}
-      gl={{ antialias: true, powerPreference: "high-performance", alpha: true }}
+      camera={isMiniMap 
+        ? { position: [cx, 1000, cz] as [number, number, number], near: 0.1, far: 3000 }  // neutral position, FloorPlanCamera will override
+        : { position: initPos, fov: 45, near: 0.1, far: 3000 }
+      }
+      shadows={!isMiniMap}
+      dpr={isMiniMap ? [1, 1] : [1, 1.5]} // lower DPR for mini-map
+      gl={{ antialias: !isMiniMap, powerPreference: "high-performance", alpha: true }}
       onPointerMissed={onClearSelection}
     >
       {/* Fog blends the terrain edge into the light horizon */}
@@ -146,42 +168,59 @@ export function WarehouseScene({
 
       {/* Hemisphere — warm concrete ground bounce + cool sky top */}
       <hemisphereLight
-        args={["#b8d9ef", "#c8b89a", 0.5]}
+        args={["#b8d9ef", "#c8b89a", viewMode === "floor_plan" ? 1.0 : 0.5]}
       />
 
       {/* ── Scene geometry ────────────────────────────────────────────────── */}
-      <EarthBackdrop
-        centerX={cx}
-        centerZ={cz}
-        floorWidth={bounds.width}
-        floorDepth={bounds.depth}
-      />
-      <WarehouseShell polygon={polygon} ceilingProfile={ceilingProfile} exteriorMode={exteriorMode} />
+      {viewMode === "3d" && (
+        <EarthBackdrop
+          centerX={cx}
+          centerZ={cz}
+          floorWidth={bounds.width}
+          floorDepth={bounds.depth}
+        />
+      )}
+      <WarehouseShell polygon={polygon} ceilingProfile={ceilingProfile} exteriorMode={exteriorMode} viewMode={viewMode} />
       <ObstacleGroup obstacles={obstacles} ceilingProfile={ceilingProfile} />
-      <CeilingShell polygon={polygon} ceilingProfile={ceilingProfile} exteriorMode={exteriorMode} />
+      {viewMode === "3d" && (
+        <CeilingShell polygon={polygon} ceilingProfile={ceilingProfile} exteriorMode={exteriorMode} />
+      )}
       <BayGroup
         placedBays={placedBays}
         selectedBayId={selectedBayId}
         onSelectBay={onSelectBay}
+        viewMode={viewMode}
       />
 
-      {introPhase === "intro_orbit" && (
+      {/* Always use FloorPlanCamera in mini-map, otherwise only when viewMode === floor_plan */}
+      {(isMiniMap || viewMode === "floor_plan") && (
+        <FloorPlanCamera cx={cx} cz={cz} maxDim={maxDim} />
+      )}
+
+      {introPhase === "intro_orbit" && viewMode === "3d" && (
         <IntroCameraController
           cx={cx} cz={cz} maxDim={maxDim}
           introStartMs={introStartMs} onDone={handleDone}
         />
       )}
 
-      <OrbitControls
-        enabled={introPhase === "interactive"}
-        enableDamping
-        dampingFactor={0.08}
-        target={[cx, 0, cz]}
-        minDistance={10}
-        maxDistance={500}
-        maxPolarAngle={Math.PI / 2.1}
-        mouseButtons={{ LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.PAN }}
-      />
+      {/* No orbit controls at all for mini-map */}
+      {!isMiniMap && (
+        <OrbitControls
+          enabled={introPhase === "interactive"}
+          enableRotate={viewMode === "3d"}
+          enableDamping
+          dampingFactor={0.08}
+          target={[cx, 0, cz]}
+          minDistance={10}
+          maxDistance={500}
+          minPolarAngle={0}
+          maxPolarAngle={viewMode === "floor_plan" ? 0 : Math.PI / 2.1}
+          minAzimuthAngle={viewMode === "floor_plan" ? 0 : -Infinity}
+          maxAzimuthAngle={viewMode === "floor_plan" ? 0 : Infinity}
+          mouseButtons={{ LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.PAN }}
+        />
+      )}
     </Canvas>
   )
 }

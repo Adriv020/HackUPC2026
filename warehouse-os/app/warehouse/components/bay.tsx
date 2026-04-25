@@ -2,32 +2,49 @@
 
 import { useState, useMemo } from "react"
 import * as THREE from "three"
+import { useTexture } from "@react-three/drei"
 import type { PlacedBay } from "@/lib/warehouse-service"
 
 type BayProps = {
   bay: PlacedBay
   isSelected: boolean
   onSelectBay: (bayId: string) => void
+  viewMode?: "3d" | "floor_plan"
 }
 
 const CLICK_DELTA_THRESHOLD = 4
 
-// Colours — warm industrial aesthetic, bright warehouse
-const COLOR_UPRIGHT  = "#5a6470"  // charcoal steel posts
-const COLOR_BEAM     = "#7a8898"  // mid steel beams
-const COLOR_SHELF    = "#94a3b5"  // shelf surface board
-const COLOR_SELECTED = "#2563eb"  // strong blue highlight
-const COLOR_HOVER    = "#3b82f6"  // hover highlight
+// Colours — Mecalux brand palette
+const COLOR_UPRIGHT  = "#1a2d5e"  // Mecalux dark navy blue uprights
+const COLOR_BEAM     = "#e8621a"  // Mecalux vivid orange beams
+const COLOR_SHELF    = "#d45a18"  // slightly deeper orange shelf surface
+const COLOR_SELECTED = "#f97316"  // bright orange-amber highlight
+const COLOR_HOVER    = "#fb923c"  // lighter orange hover
 
-export function Bay({ bay, isSelected, onSelectBay }: BayProps) {
+export function Bay({ bay, isSelected, onSelectBay, viewMode = "3d" }: BayProps) {
   const [hoveredLevel, setHoveredLevel] = useState<number | null>(null)
+  const logoTexture = useTexture("/Mecalux.jpg")
+
+  // Make texture look crisp on the small label
+  logoTexture.colorSpace = THREE.SRGBColorSpace
 
   const { width, depth, height } = bay
   const halfW = width / 2
   const halfD = depth / 2
 
-  // Number of shelf levels
-  const levels = Math.max(1, Math.floor(height / 0.8))
+  const nLoads = bay.bayTypeData.nLoads || 0
+
+  // Box logic (1 unit = 100mm, so 5.0 = 500mm box)
+  const BOX_SIZE = 5.0
+  const usableW = width - 1.0
+  const usableD = depth - 1.0
+  
+  const boxesPerRow = Math.max(1, Math.floor(usableW / BOX_SIZE))
+  const rowsPerShelf = Math.max(1, Math.floor(usableD / BOX_SIZE))
+  const capacityPerShelf = boxesPerRow * rowsPerShelf
+
+  // Calculate shelves needed to fit all loads (minimum 1)
+  const levels = Math.max(1, Math.ceil(nLoads / capacityPerShelf))
 
   // Upright post positions (4 corners relative to bay centre)
   const uprightPositions: [number, number, number][] = [
@@ -48,9 +65,13 @@ export function Bay({ bay, isSelected, onSelectBay }: BayProps) {
   ), [width, height, depth])
 
   return (
-    // Bay group is centred at its position (bottom-centre of footprint)
+    // Bay group is centred at its geometric center in the world
     // We offset Y by height/2 so the bottom of the bay is at y=0
-    <group position={bay.position}>
+    // We apply true rotation around the Y axis (negative because Three.js Y is "up" while 2D Y was "down" relative to Z)
+    <group 
+      position={bay.position} 
+      rotation={[0, -(bay.rotation || 0) * Math.PI / 180, 0]}
+    >
       {/* Vertical upright posts at 4 corners */}
       {uprightPositions.map((pos, i) => (
         <mesh key={`post-${i}`} position={pos} castShadow>
@@ -111,6 +132,51 @@ export function Bay({ bay, isSelected, onSelectBay }: BayProps) {
                 roughness={0.8}
               />
             </mesh>
+
+            {/* Boxes on this shelf */}
+            {viewMode === "3d" && Array.from({ length: Math.min(capacityPerShelf, Math.max(0, nLoads - li * capacityPerShelf)) }).map((_, boxIdx) => {
+              const row = Math.floor(boxIdx / boxesPerRow)
+              const col = boxIdx % boxesPerRow
+              
+              const totalW = boxesPerRow * BOX_SIZE
+              const totalD = rowsPerShelf * BOX_SIZE
+              const startX = -totalW / 2 + BOX_SIZE / 2
+              const startZ = -totalD / 2 + BOX_SIZE / 2
+              
+              const bx = startX + col * BOX_SIZE
+              const bz = startZ + row * BOX_SIZE
+              const by = 0.05 + (BOX_SIZE * 0.95) / 2
+              
+              return (
+                <group key={`box-${boxIdx}`} position={[bx, by, bz]}>
+                  {/* Cardboard Box */}
+                  <mesh castShadow receiveShadow>
+                    <boxGeometry args={[BOX_SIZE * 0.95, BOX_SIZE * 0.95, BOX_SIZE * 0.95]} />
+                    <meshStandardMaterial color="#cfa474" roughness={0.9} flatShading={true} />
+                  </mesh>
+                  {/* Blue Tape Stripe */}
+                  <mesh position={[0, (BOX_SIZE * 0.95) / 2 + 0.002, 0]} castShadow>
+                    <boxGeometry args={[BOX_SIZE * 0.95, 0.005, BOX_SIZE * 0.15]} />
+                    <meshStandardMaterial color="#3b82f6" roughness={0.6} />
+                  </mesh>
+                  {/* Mecalux logo — JPG with white background, applied directly to box face */}
+                  {/* polygonOffset pushes this plane forward in depth-buffer space, eliminating z-fighting */}
+                  <mesh
+                    position={[(BOX_SIZE * 0.95) / 2 + 0.001, 0, BOX_SIZE * 0.1]}
+                    rotation={[0, Math.PI / 2, 0]}
+                  >
+                    <planeGeometry args={[BOX_SIZE * 0.35, BOX_SIZE * 0.35]} />
+                    <meshStandardMaterial
+                      map={logoTexture}
+                      roughness={0.4}
+                      polygonOffset={true}
+                      polygonOffsetFactor={-1}
+                      polygonOffsetUnits={-1}
+                    />
+                  </mesh>
+                </group>
+              )
+            })}
           </group>
         )
       })}

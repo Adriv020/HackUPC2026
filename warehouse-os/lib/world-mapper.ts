@@ -39,33 +39,29 @@ export function mapWorldToScene(world: WorldResponse): {
 
   const placedBays: PlacedBay[] = world.rows.flatMap(row =>
     row.bays.map(bay => {
-      const isRotated = bay.rotation === 90
       const { width, depth, height } = bay.dimensions
 
-      // Rotated bays swap width↔depth along the X/Z axes
-      const footW = isRotated ? depth : width
-      const footD = isRotated ? width : depth
-
-      // Backend position is bottom-left corner of footprint in mm
-      const centerX = (bay.position.x + footW / 2) * SCALE
-      const centerZ = -((bay.position.y + footD / 2) * SCALE)
+      // Backend now sends the exact physical center of the bay
+      const centerX = bay.position.x * SCALE
+      const centerZ = -(bay.position.y * SCALE)
 
       const bayTypeData: BayTypeConfig = {
         typeId: String(bay.typeId),
-        width: footW * SCALE,
-        depth: footD * SCALE,
+        width: width * SCALE,
+        depth: depth * SCALE,
         height: height * SCALE,
-        col4: String(bay.nLoads),
-        count: 1,
-        col6: String(bay.price),
+        gap: 0,
+        nLoads: bay.nLoads,
+        price: bay.price,
       }
 
       return {
         id: bay.bayId,
         typeId: String(bay.typeId),
         position: [centerX, 0, centerZ] as [number, number, number],
-        width: footW * SCALE,
-        depth: footD * SCALE,
+        rotation: bay.rotation, // Exact geometric rotation passed through
+        width: width * SCALE,
+        depth: depth * SCALE,
         height: height * SCALE,
         bayTypeData,
       }
@@ -74,7 +70,7 @@ export function mapWorldToScene(world: WorldResponse): {
 
   // Synthetic entry so the "X / Y bays placed" chip shows the correct total
   const bayTypes: BayTypeConfig[] = [
-    { typeId: "all", width: 0, depth: 0, height: 0, col4: "", count: world.summary.totalBays, col6: "" },
+    { typeId: "all", width: 0, depth: 0, height: 0, gap: 0, nLoads: 0, price: 0 },
   ]
 
   return { polygon, obstacles, ceilingProfile, placedBays, bayTypes }

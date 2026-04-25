@@ -3,6 +3,7 @@
 import { useMemo, useRef } from "react"
 import * as THREE from "three"
 import { useFrame } from "@react-three/fiber"
+import { Line } from "@react-three/drei"
 import {
   getCeilingHeight,
   type CeilingProfile,
@@ -15,12 +16,13 @@ type Props = {
   polygon: WarehousePolygon
   ceilingProfile: CeilingProfile
   exteriorMode: ExteriorMode
+  viewMode?: "3d" | "floor_plan"
 }
 
 const WALL_THICKNESS = 0.25
 const FLOOR_DEPTH = 0.2
 
-export function WarehouseShell({ polygon, ceilingProfile, exteriorMode }: Props) {
+export function WarehouseShell({ polygon, ceilingProfile, exteriorMode, viewMode = "3d" }: Props) {
   const { points } = polygon
   const bounds = useMemo(() => computeWarehouseBounds(polygon), [polygon])
 
@@ -227,6 +229,18 @@ export function WarehouseShell({ polygon, ceilingProfile, exteriorMode }: Props)
       material.depthWrite = depthWrite
     }
   })
+
+  if (viewMode === "floor_plan") {
+    // The points are polygon.points, we need to map them to THREE.Vector3
+    const points3D = points.map(p => new THREE.Vector3(p.x, 0.1, p.z))
+    if (points3D.length > 0) {
+      points3D.push(points3D[0].clone()) // close the loop
+    }
+
+    return (
+      <Line points={points3D} color="#000000" lineWidth={3} />
+    )
+  }
 
   return (
     <group>
