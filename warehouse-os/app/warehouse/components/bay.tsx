@@ -8,6 +8,7 @@ type BayProps = {
   bay: PlacedBay
   isSelected: boolean
   onSelectBay: (bayId: string) => void
+  viewMode?: "3d" | "floor_plan"
 }
 
 const CLICK_DELTA_THRESHOLD = 4
@@ -19,7 +20,7 @@ const COLOR_SHELF    = "#94a3b5"  // shelf surface board
 const COLOR_SELECTED = "#2563eb"  // strong blue highlight
 const COLOR_HOVER    = "#3b82f6"  // hover highlight
 
-export function Bay({ bay, isSelected, onSelectBay }: BayProps) {
+export function Bay({ bay, isSelected, onSelectBay, viewMode = "3d" }: BayProps) {
   const [hoveredLevel, setHoveredLevel] = useState<number | null>(null)
 
   const { width, depth, height } = bay
@@ -124,7 +125,7 @@ export function Bay({ bay, isSelected, onSelectBay }: BayProps) {
             </mesh>
 
             {/* Boxes on this shelf */}
-            {Array.from({ length: Math.min(capacityPerShelf, Math.max(0, nLoads - li * capacityPerShelf)) }).map((_, boxIdx) => {
+            {viewMode === "3d" && Array.from({ length: Math.min(capacityPerShelf, Math.max(0, nLoads - li * capacityPerShelf)) }).map((_, boxIdx) => {
               const row = Math.floor(boxIdx / boxesPerRow)
               const col = boxIdx % boxesPerRow
               
