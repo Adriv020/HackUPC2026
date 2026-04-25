@@ -132,7 +132,7 @@ export function WarehousePlayground() {
         const scenarioId = await createScenario(projectId)
         if (cancelled) return
 
-        setLoadingMessage("Solver running — this takes ~30 s…")
+        setLoadingMessage("Solver running — this takes ~3 min…")
         await pollScenarioStatus(scenarioId)
         if (cancelled) return
 

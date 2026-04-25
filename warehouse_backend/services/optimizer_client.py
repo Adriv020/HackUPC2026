@@ -1,6 +1,6 @@
 """
 Integrates the SA solver directly — no HTTP round-trip, no temp files.
-The solver runs in asyncio.to_thread() because it is CPU-bound (~28 s).
+The solver runs in asyncio.to_thread() because it is CPU-bound (~180 s).
 """
 import asyncio
 import sys
@@ -15,7 +15,10 @@ from services.optimizer.solver import (
     TIME_LIMIT,
     greedy,
     make_bay_type,
+    post_process,
     sa,
+    aabb_from_corners,
+    get_obb_corners,
 )
 from websocket.manager import broadcast
 
@@ -80,9 +83,12 @@ def _run_solver(wh_verts, obstacles, ceil_pts, bay_types):
     greedy(state, greedy_time)
 
     remaining = TIME_LIMIT - (time.time() - t0)
-    if remaining > 2.0:
-        print(f"  [solver] Phase 2: SA ({remaining:.1f}s)…", file=sys.stderr)
-        sa(state, remaining)
+    if remaining > 6.0:
+        print(f"  [solver] Phase 2: SA ({remaining - 5.0:.1f}s)…", file=sys.stderr)
+        sa(state, remaining - 5.0)
+
+    print(f"  [solver] Phase 3: post-processing…", file=sys.stderr)
+    post_process(state)
 
     snapshot = state.snapshot()
     print(
@@ -104,17 +110,24 @@ async def _save_result(
     total_revenue = 0.0
 
     for tid, x, y, rotation in snapshot:
-        # Normalize 180→0 and 270→90: rectangles have the same footprint at both
-        # angles, and our API / Pydantic model only accepts Literal[0, 90].
-        norm_rot = rotation % 180
         bay_type = catalog[tid]
+        # solver_flex uses arbitrary rotation angles (OBB packing).
+        # Compute the AABB so the frontend gets a correct axis-aligned footprint.
+        w = float(bay_type["width"])
+        d = float(bay_type["depth"]) + float(bay_type["gap"])
+        corners = get_obb_corners(float(x), float(y), w, d, float(rotation))
+        x1, y1, x2, y2 = aabb_from_corners(corners)
+        aabb_w = x2 - x1
+        aabb_d = y2 - y1
+        # Map to 0/90: wider along X → rotation 0, wider along Y → rotation 90
+        norm_rot = 0 if aabb_w >= aabb_d else 90
         total_revenue += bay_type["price"]
         docs.append({
             "scenarioId": ObjectId(scenario_id),
-            "projectId": project["_id"],   # already an ObjectId from find_one
-            "rowId": f"row-{int(y)}",      # bays sharing Y sit in the same strip
+            "projectId": project["_id"],
+            "rowId": f"row-{int(y1)}",
             "typeId": tid,
-            "position": {"x": round(float(x)), "y": round(float(y)), "z": 0},
+            "position": {"x": round(x1), "y": round(y1), "z": 0},
             "rotation": norm_rot,
             "bayMeta": {
                 "width":  bay_type["width"],
