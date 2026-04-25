@@ -147,8 +147,8 @@ def main():
 
     wh_area = polygon_area(wh_data)
     sum_eff = sum(b["efficiency"] for b in placed)
-    sum_area = sum(b["width"] * (b["depth"] + b["gap"]) for b in placed)
-    quality = (sum_eff ** 2) * (sum_area / wh_area) if wh_area > 0 else 0
+    sum_area = sum(b["width"] * (b["depth"]) for b in placed)
+    quality = (sum_eff ** (2.0 - (sum_area / wh_area))) if wh_area > 0 else 0
 
     data = {
         "warehouse": wh_data,

@@ -20,6 +20,7 @@ from typing import List, Tuple, Set, Dict
 # Constants
 # ---------------------------------------------------------------------------
 TIME_LIMIT = 28.0
+#TIME_LIMIT = 120.0
 EPS = 1e-6
 
 # BayType tuple indices
@@ -296,8 +297,8 @@ class State:
         self.base_ys = sorted(ys)
 
     def quality(self):
-        if not self.active: return 0.0
-        return self.sum_eff ** 2 * (self.sum_area / self.wh_area)
+        if not self.active: return 1e18
+        return self.sum_eff ** (2.0 - (self.sum_area / self.wh_area))
 
     def feasible(self, bt, x, y, rot, excl=None):
         w, d = bay_footprint(bt, rot)
@@ -629,13 +630,13 @@ def sa(state: State, time_limit: float):
             continue
 
         new_q = state.quality()
-        delta = new_q - cur_q
+        delta = new_q - cur_q  # delta < 0 is GOOD (cost reduction)
 
         accept = True
-        if delta < 0:
+        if delta > 0: # Worse step!
             if T > 1e-12:
                 try:
-                    accept = _random() < _exp(delta / T)
+                    accept = _random() < _exp(-delta / T)
                 except OverflowError:
                     accept = False
             else:
@@ -643,7 +644,7 @@ def sa(state: State, time_limit: float):
 
         if accept:
             cur_q = new_q
-            if new_q > best_q:
+            if new_q < best_q:
                 best_q = new_q
                 best_snap = state.snapshot()
                 no_imp = 0

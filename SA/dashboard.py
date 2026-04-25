@@ -256,6 +256,7 @@ HTML = """<!DOCTYPE html>
           <label for="modelSelect" style="font-size: 12px; color: #9ca3af; margin-bottom: 4px;">Solver Engine:</label>
           <select id="modelSelect" style="background: #13151f; color: #e0e0e0; border: 1px solid rgba(99, 102, 241, 0.3); padding: 6px 10px; border-radius: 4px; outline: none; font-family: inherit; font-size: 13px; cursor: pointer;">
             <option value="solver.py">Orthogonal (solver.py)</option>
+            <option value="solver_45.py">Orthogonal + 45° (solver_45.py)</option>
             <option value="solver_flex.py">Continuous SAT (solver_flex.py)</option>
           </select>
         </div>
@@ -462,7 +463,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if path == '/api/solve':
             case_name = query.get('case', [''])[0]
             model_name = query.get('model', ['solver.py'])[0]
-            if model_name not in ['solver.py', 'solver_flex.py']:
+            if model_name not in ['solver.py', 'solver_flex.py', 'solver_45.py']:
                 model_name = 'solver.py'
             if not case_name:
                 self.send_response(400)

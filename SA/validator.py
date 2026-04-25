@@ -386,9 +386,9 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
     sum_area = 0.0
     for x1, y1, x2, y2, corners, b, bt, idx in bay_rects:
         sum_eff += bt['price'] / bt['nLoads']
-        sum_area += bt['width'] * (bt['depth'] + bt['gap'])
+        sum_area += bt['width'] * bt['depth']
 
-    Q = (sum_eff ** 2) * (sum_area / wh_area) if wh_area > 0 else 0
+    Q = (sum_eff ** (2.0 - (sum_area / wh_area))) if wh_area > 0 else 0
 
     print("STATUS: VALID")
     print(f"  Quality score Q = {Q:.2f}")

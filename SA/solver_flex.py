@@ -376,8 +376,8 @@ class State:
         self.candidate_corners = list(corners)
 
     def quality(self):
-        if not self.active: return 0.0
-        return self.sum_eff ** 2 * (self.sum_area / self.wh_area)
+        if not self.active: return 1e18
+        return self.sum_eff ** (2.0 - (self.sum_area / self.wh_area))
 
     def feasible(self, bt, x, y, rot, excl=None):
         r_x = round(x, 1)
@@ -892,7 +892,7 @@ def sa(state: State, time_limit: float):
                 sxs = [x_min + i * step for i in range(9)]
                 test_angles = state.wh.wall_angles if state.wh.wall_angles else [0.0, 90.0]
                 test_angles = list(set(test_angles))[:4]
-                for bt in sorted(bay_types, key=lambda x: x[BT_EFF], reverse=True)[-3:]: # Only test top 3
+                for bt in sorted(bay_types, key=lambda x: x[BT_EFF])[:3]: # Only test top 3 cheapest
                     for rot in test_angles:
                         w, d = bay_footprint(bt, rot)
                         for y in sys_:
@@ -908,13 +908,13 @@ def sa(state: State, time_limit: float):
             continue
 
         new_q = state.quality()
-        delta = new_q - cur_q
+        delta = new_q - cur_q  # delta < 0 is GOOD (cost reduction)
 
         accept = True
-        if delta < 0:
+        if delta > 0: # Worse step!
             if T > 1e-12:
                 try:
-                    accept = _random() < _exp(delta / T)
+                    accept = _random() < _exp(-delta / T)
                 except OverflowError:
                     accept = False
             else:
@@ -923,7 +923,7 @@ def sa(state: State, time_limit: float):
         if accept:
             cur_q = new_q
             move_accepts[m_type] += 1
-            if new_q > best_q:
+            if new_q < best_q:
                 best_q = new_q
                 best_snap = state.snapshot()
                 no_imp = 0
