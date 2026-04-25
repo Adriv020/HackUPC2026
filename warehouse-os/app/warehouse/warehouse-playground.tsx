@@ -106,6 +106,7 @@ export function WarehousePlayground() {
   const [parsedData, setParsedData] = useState<ParsedData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [loadingMessage, setLoadingMessage] = useState("Working…")
+  const [solverProgress, setSolverProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [introPhase, setIntroPhase] = useState<IntroPhase>("intro_orbit")
   const [introStartMs, setIntroStartMs] = useState(0)
@@ -127,13 +128,14 @@ export function WarehousePlayground() {
 
     async function run() {
       try {
-        setLoadingMessage("Running solver (~30 s)…")
+        setLoadingMessage("Running solver…")
         const world = await solve(uploads as { warehouse: string; obstacles: string; ceiling: string; bays: string; })
         if (cancelled) return
 
         const { polygon, obstacles, ceilingProfile, placedBays, bayTypes } = mapWorldToScene(world)
         console.log(`[WarehouseOS] ${placedBays.length} bays placed`)
 
+        setLoadingMessage("Done!")
         setParsedData({ polygon, obstacles, ceilingProfile, bayTypes, placedBays })
         setIntroStartMs(performance.now())
         setIntroPhase("intro_orbit")
@@ -149,6 +151,22 @@ export function WarehousePlayground() {
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploads])
+
+  // Animate solver progress bar
+  useEffect(() => {
+    if (!isLoading) {
+      setSolverProgress(p => p > 0 ? 100 : 0)
+      const id = setTimeout(() => setSolverProgress(0), 700)
+      return () => clearTimeout(id)
+    }
+    setSolverProgress(0)
+    const startMs = performance.now()
+    const id = setInterval(() => {
+      const elapsed = performance.now() - startMs
+      setSolverProgress(Math.round(90 * (1 - Math.exp(-elapsed / 12000))))
+    }, 200)
+    return () => clearInterval(id)
+  }, [isLoading])
 
   // ── File upload handlers ───────────────────────────────────────────────────
 
@@ -429,13 +447,35 @@ export function WarehousePlayground() {
           </div>
         )}
 
-        {/* Loading */}
-        {isLoading && (
-          <div
-            className="text-center text-sm"
-            style={{ color: "rgba(15,23,42,0.6)" }}
-          >
-            {loadingMessage}
+        {/* Loading progress bar */}
+        {solverProgress > 0 && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span
+                className="text-xs"
+                style={{ fontFamily: "var(--font-mono, monospace)", color: "#8A94A6" }}
+              >
+                {loadingMessage}
+              </span>
+              <span
+                className="text-xs tabular-nums"
+                style={{ fontFamily: "var(--font-mono, monospace)", color: "#60a5fa" }}
+              >
+                {solverProgress}%
+              </span>
+            </div>
+            <div
+              className="relative h-1.5 w-full overflow-hidden rounded-full"
+              style={{ background: "rgba(255,255,255,0.06)" }}
+            >
+              <div
+                className="progress-bar-animated h-full rounded-full transition-[width] duration-300 ease-out"
+                style={{
+                  width: `${solverProgress}%`,
+                  boxShadow: "0 0 10px rgba(96,165,250,0.55), 0 0 3px rgba(59,130,246,0.8)",
+                }}
+              />
+            </div>
           </div>
         )}
       </div>
