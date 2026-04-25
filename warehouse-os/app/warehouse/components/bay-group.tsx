@@ -7,9 +7,10 @@ type Props = {
   placedBays: PlacedBay[]
   selectedBayId: string | null
   onSelectBay: (bayId: string) => void
+  viewMode?: "3d" | "floor_plan"
 }
 
-export function BayGroup({ placedBays, selectedBayId, onSelectBay }: Props) {
+export function BayGroup({ placedBays, selectedBayId, onSelectBay, viewMode = "3d" }: Props) {
   if (placedBays.length === 0) return null
 
   return (
@@ -20,6 +21,7 @@ export function BayGroup({ placedBays, selectedBayId, onSelectBay }: Props) {
           bay={bay}
           isSelected={selectedBayId === bay.id}
           onSelectBay={onSelectBay}
+          viewMode={viewMode}
         />
       ))}
     </group>
