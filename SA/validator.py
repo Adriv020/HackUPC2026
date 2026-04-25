@@ -15,6 +15,56 @@ import math
 
 EPS = 1e-9
 
+def get_obb_corners(x_bl, y_bl, w, h, angle_deg):
+    rad = math.radians(angle_deg)
+    cos_a = math.cos(rad)
+    sin_a = math.sin(rad)
+    return (
+        (x_bl, y_bl),
+        (x_bl + w * cos_a, y_bl + w * sin_a),
+        (x_bl + w * cos_a - h * sin_a, y_bl + w * sin_a + h * cos_a),
+        (x_bl - h * sin_a, y_bl + h * cos_a)
+    )
+
+def aabb_from_corners(c):
+    xs = [p[0] for p in c]
+    ys = [p[1] for p in c]
+    return min(xs), min(ys), max(xs), max(ys)
+
+def sat_overlap(c1, c2):
+    for poly in (c1, c2):
+        for i in range(len(poly)):
+            p1 = poly[i]; p2 = poly[(i + 1) % 4]
+            nx = p2[1] - p1[1]
+            ny = p1[0] - p2[0]
+            m1 = min(p[0]*nx + p[1]*ny for p in c1)
+            M1 = max(p[0]*nx + p[1]*ny for p in c1)
+            m2 = min(p[0]*nx + p[1]*ny for p in c2)
+            M2 = max(p[0]*nx + p[1]*ny for p in c2)
+            if M1 <= m2 + 1e-6 or M2 <= m1 + 1e-6:
+                return False
+    return True
+
+def segments_intersect(p1, p2, p3, p4):
+    def ccw(A, B, C):
+        return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
+    return (ccw(p1, p3, p4) != ccw(p2, p3, p4)) and (ccw(p1, p2, p3) != ccw(p1, p2, p4))
+
+def obb_inside(corners, verts):
+    for cx, cy in corners:
+        if not point_in_polygon(cx, cy, verts): return False, (cx, cy)
+    for i in range(4):
+        p1 = corners[i]; p2 = corners[(i+1)%4]
+        n = len(verts)
+        for j in range(n):
+            w1 = verts[j]; w2 = verts[(j+1)%n]
+            # Only flag intersection if neither point lies exactly on the wall segment
+            if _point_on_segment(p1[0], p1[1], w1[0], w1[1], w2[0], w2[1]) or \
+               _point_on_segment(p2[0], p2[1], w1[0], w1[1], w2[0], w2[1]):
+                continue
+            if segments_intersect(p1, p2, w1, w2): return False, p1
+    return True, None
+
 # ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
@@ -78,7 +128,7 @@ def parse_solution(path):
             tid = int(parts[0].strip())
             x = float(parts[1].strip())
             y = float(parts[2].strip())
-            rot = int(float(parts[3].strip()))
+            rot = float(parts[3].strip())
             bays.append({'typeId': tid, 'x': x, 'y': y, 'rotation': rot, 'line': i + 1})
         except ValueError:
             # Skip header or malformed lines
@@ -231,15 +281,12 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
     obs_rects = [(o[0], o[1], o[0] + o[2], o[1] + o[3]) for o in obstacles]
 
     # Compute bay footprints
-    bay_rects = []  # (x1, y1, x2, y2, bay_dict)
+    bay_rects = []  # (x1, y1, x2, y2, corners, bay_dict)
     wh_area = polygon_area(wh_verts)
 
     # --- Structural checks ---
     for i, b in enumerate(placed):
         rot = b['rotation']
-        if rot % 90 != 0:
-            errors.append(f"Bay #{i} (line {b['line']}): invalid rotation {rot} (must be multiple of 90)")
-            continue
 
         tid = b['typeId']
         if tid not in bay_types:
@@ -247,15 +294,16 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
             continue
 
         bt = bay_types[tid]
-        w, d = bay_footprint(bt, rot)
-        x1, y1 = b['x'], b['y']
-        x2, y2 = x1 + w, y1 + d
-        bay_rects.append((x1, y1, x2, y2, b, bt, i))
+        w = bt['width']
+        d = bt['depth'] + bt['gap']
+        corners = get_obb_corners(b['x'], b['y'], w, d, rot)
+        x1, y1, x2, y2 = aabb_from_corners(corners)
+        bay_rects.append((x1, y1, x2, y2, corners, b, bt, i))
 
     # --- Constraint 1: Warehouse boundary ---
     wh_passes = 0
-    for x1, y1, x2, y2, b, bt, idx in bay_rects:
-        ok, corner = rect_in_polygon(x1, y1, x2, y2, wh_verts)
+    for x1, y1, x2, y2, corners, b, bt, idx in bay_rects:
+        ok, corner = obb_inside(corners, wh_verts)
         if not ok:
             errors.append(
                 f"Bay #{idx} (Id={b['typeId']} at ({b['x']:.1f}, {b['y']:.1f}) rot {b['rotation']}): "
@@ -271,14 +319,13 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
 
     # --- Constraint 2: Obstacle avoidance ---
     obs_violations = 0
-    for x1, y1, x2, y2, b, bt, idx in bay_rects:
+    for x1, y1, x2, y2, corners, b, bt, idx in bay_rects:
         for oi, (ox1, oy1, ox2, oy2) in enumerate(obs_rects):
-            if rects_overlap_strict(x1, y1, x2, y2, ox1, oy1, ox2, oy2):
-                ow = min(x2, ox2) - max(x1, ox1)
-                oh = min(y2, oy2) - max(y1, oy1)
+            obs_c = ((ox1, oy1), (ox2, oy1), (ox2, oy2), (ox1, oy2))
+            if sat_overlap(corners, obs_c):
                 errors.append(
                     f"Bay #{idx} (Id={b['typeId']} at ({b['x']:.1f}, {b['y']:.1f}) rot {b['rotation']}): "
-                    f"overlaps obstacle {oi} (overlap {ow:.1f}×{oh:.1f})"
+                    f"overlaps obstacle {oi}"
                 )
                 obs_violations += 1
 
@@ -291,14 +338,12 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
     bay_violations = 0
     n = len(bay_rects)
     for i in range(n):
-        x1a, y1a, x2a, y2a, ba, bta, idxa = bay_rects[i]
+        x1a, y1a, x2a, y2a, ca, ba, bta, idxa = bay_rects[i]
         for j in range(i + 1, n):
-            x1b, y1b, x2b, y2b, bb, btb, idxb = bay_rects[j]
-            if rects_overlap_strict(x1a, y1a, x2a, y2a, x1b, y1b, x2b, y2b):
-                ow = min(x2a, x2b) - max(x1a, x1b)
-                oh = min(y2a, y2b) - max(y1a, y1b)
+            x1b, y1b, x2b, y2b, cb, bb, btb, idxb = bay_rects[j]
+            if sat_overlap(ca, cb):
                 errors.append(
-                    f"Bay #{idxa} overlaps Bay #{idxb} (overlap {ow:.1f}×{oh:.1f})"
+                    f"Bay #{idxa} overlaps Bay #{idxb}"
                 )
                 bay_violations += 1
 
@@ -309,7 +354,7 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
 
     # --- Constraint 4: Ceiling height ---
     ceil_violations = 0
-    for x1, y1, x2, y2, b, bt, idx in bay_rects:
+    for x1, y1, x2, y2, corners, b, bt, idx in bay_rects:
         min_h = min_ceiling(ceil_pts, x1, x2)
         req_h = bt['height']
         if min_h < req_h - EPS:
@@ -339,11 +384,11 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
     # Compute quality score
     sum_eff = 0.0
     sum_area = 0.0
-    for x1, y1, x2, y2, b, bt, idx in bay_rects:
+    for x1, y1, x2, y2, corners, b, bt, idx in bay_rects:
         sum_eff += bt['price'] / bt['nLoads']
-        sum_area += (x2 - x1) * (y2 - y1)
+        sum_area += bt['width'] * bt['depth']
 
-    Q = (sum_eff ** 2) * (sum_area / wh_area) if wh_area > 0 else 0
+    Q = (sum_eff ** (2.0 - (sum_area / wh_area))) if wh_area > 0 else 0
 
     print("STATUS: VALID")
     print(f"  Quality score Q = {Q:.2f}")
@@ -357,7 +402,7 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
 
     # Per-type breakdown
     type_counts = {}
-    for x1, y1, x2, y2, b, bt, idx in bay_rects:
+    for x1, y1, x2, y2, corners, b, bt, idx in bay_rects:
         tid = b['typeId']
         if tid not in type_counts:
             type_counts[tid] = 0

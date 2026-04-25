@@ -38,10 +38,11 @@ def make_bay_type(id_, w, d, h, g, nl, pr):
 
 def bay_footprint(bt, rotation):
     w = bt[BT_W]
-    d = bt[BT_D] + bt[BT_G]  # gap on depth side (one end), forklift clearance
-    if rotation == 0 or rotation == 180:
-        return w, d
-    return d, w
+    d = bt[BT_D] + bt[BT_G]
+    rad = math.radians(rotation)
+    w_new = w * abs(math.cos(rad)) + d * abs(math.sin(rad))
+    d_new = w * abs(math.sin(rad)) + d * abs(math.cos(rad))
+    return w_new, d_new
 
 
 def make_placed_bay(bt, x, y, rotation):
@@ -375,7 +376,7 @@ def greedy(state: State, time_limit: float):
     # Pass 1: strip packing with small step
     for bt in sorted_bt:
         if time.time() - start > time_limit * 0.5: break
-        for rot in [0, 90]:
+        for rot in [0, 45, 90, 135]:
             if time.time() - start > time_limit * 0.5: break
             w, d = bay_footprint(bt, rot)
             if w < 1 or d < 1: continue
@@ -408,7 +409,7 @@ def greedy(state: State, time_limit: float):
 
         for bt in sorted_bt:
             if time.time() - start > time_limit: break
-            for rot in [0, 90]:
+            for rot in [0, 45, 90, 135]:
                 w, d = bay_footprint(bt, rot)
                 for y in sys_:
                     if time.time() - start > time_limit: break
@@ -482,7 +483,7 @@ def sa(state: State, time_limit: float):
             if n_active > 0 and _random() < 0.75:
                 ref_idx = active_list[int(_random() * n_active)]
                 ref = state.bays[ref_idx]
-                rots = [0, 90] if _random() < 0.5 else [90, 0]
+                rots = [0, 45, 90, 135] if _random() < 0.5 else [135, 90, 45, 0]
                 for rot in rots:
                     w, d = bay_footprint(bt, rot)
                     trials = [
@@ -506,7 +507,7 @@ def sa(state: State, time_limit: float):
 
             # Strategy 2: random position
             if not placed:
-                for rot in [0, 90]:
+                for rot in [0, 45, 90, 135]:
                     w, d = bay_footprint(bt, rot)
                     for _ in range(6):
                         tx = int(wh.min_x + _random() * max(1, wh.max_x - wh.min_x - w))
@@ -525,7 +526,7 @@ def sa(state: State, time_limit: float):
                 bys = list(state.base_ys)
                 random.shuffle(bxs)
                 random.shuffle(bys)
-                for rot in [0, 90]:
+                for rot in [0, 45, 90, 135]:
                     for x in bxs[:6]:
                         for y in bys[:6]:
                             if state.feasible(bt, x, y, rot):

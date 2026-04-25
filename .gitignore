@@ -8,3 +8,7 @@ venv/
 env/
 
 .env
+.idea/
+PublicTestCases/
+*.csv
+*.html
