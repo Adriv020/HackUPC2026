@@ -115,6 +115,7 @@ export function WarehousePlayground() {
   const [exteriorMode, setExteriorMode] = useState<ExteriorMode>("auto")
   const [isExteriorMenuOpen, setIsExteriorMenuOpen] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>("3d")
+  const [algorithm, setAlgorithm] = useState<"python" | "cpp">("cpp")
 
   const allUploaded = Object.values(uploads).every(v => v !== null)
 
@@ -127,8 +128,14 @@ export function WarehousePlayground() {
 
     async function run() {
       try {
-        setLoadingMessage("Running solver (~30 s)…")
-        const world = await solve(uploads as { warehouse: string; obstacles: string; ceiling: string; bays: string; })
+        setLoadingMessage(`Running ${algorithm === "cpp" ? "C++" : "Python"} solver…`)
+        const world = await solve({ 
+          warehouse: uploads.warehouse!, 
+          obstacles: uploads.obstacles || "", 
+          ceiling: uploads.ceiling!, 
+          bays: uploads.bays!,
+          algorithm 
+        })
         if (cancelled) return
 
         const { polygon, obstacles, ceilingProfile, placedBays, bayTypes } = mapWorldToScene(world)
@@ -338,6 +345,25 @@ export function WarehousePlayground() {
           <p className="mt-2 text-sm" style={{ color: "rgba(15,23,42,0.6)" }}>
             Upload your four CSV files to build the 3D scene
           </p>
+        </div>
+
+        {/* Algorithm Selection */}
+        <div className="flex items-center justify-center gap-4">
+          <span className="text-sm font-medium text-slate-700">Algorithm:</span>
+          <div className="flex rounded bg-white/40 p-1 border" style={{ borderColor: "rgba(15,23,42,0.2)" }}>
+            <button
+              onClick={() => setAlgorithm("cpp")}
+              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${algorithm === "cpp" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+            >
+              C++ (Fast)
+            </button>
+            <button
+              onClick={() => setAlgorithm("python")}
+              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${algorithm === "python" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+            >
+              Python
+            </button>
+          </div>
         </div>
 
         {/* Quick-load test cases */}

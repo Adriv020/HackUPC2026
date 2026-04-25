@@ -81,12 +81,15 @@ export async function solve(uploads: {
   obstacles: string
   ceiling: string
   bays: string
+  algorithm?: "python" | "cpp"
 }): Promise<WorldResponse> {
   const form = new FormData()
   form.append("warehouse", new Blob([uploads.warehouse], { type: "text/csv" }), "warehouse.csv")
   form.append("obstacles", new Blob([uploads.obstacles ?? ""], { type: "text/csv" }), "obstacles.csv")
   form.append("ceiling", new Blob([uploads.ceiling], { type: "text/csv" }), "ceiling.csv")
   form.append("types_of_bays", new Blob([uploads.bays], { type: "text/csv" }), "types_of_bays.csv")
+  form.append("algorithm", uploads.algorithm || "cpp")
+  
   const res = await fetch(`${API_URL}/solve`, { method: "POST", body: form })
   if (!res.ok) throw new Error(`Solver failed: ${await res.text()}`)
   return res.json() as Promise<WorldResponse>

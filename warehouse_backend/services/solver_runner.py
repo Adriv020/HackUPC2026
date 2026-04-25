@@ -5,6 +5,10 @@ No MongoDB. Used by the /solve endpoint for the presentation demo.
 import asyncio
 import sys
 import time
+import os
+import tempfile
+import subprocess
+import csv
 
 from services.ceiling_service import get_ceiling_height
 from services.csv_parser import (
@@ -66,6 +70,62 @@ def _run(wh_verts, obstacles, ceil_pts, bay_types):
 
 
 # ---------------------------------------------------------------------------
+# C++ Subprocess Solver
+# ---------------------------------------------------------------------------
+def _run_cpp(wh_csv, obs_csv, ceil_csv, bays_csv):
+    t0 = time.time()
+    snapshot = []
+    
+    # Locate solver_flex binary relative to this file
+    # backend/services/solver_runner.py -> backend/../SA/solver_flex
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    solver_bin = os.path.join(base_dir, "SA", "solver_flex")
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        wh_path = os.path.join(tmpdir, "warehouse.csv")
+        obs_path = os.path.join(tmpdir, "obstacles.csv")
+        ceil_path = os.path.join(tmpdir, "ceiling.csv")
+        bays_path = os.path.join(tmpdir, "types_of_bays.csv")
+        out_path = os.path.join(tmpdir, "output.csv")
+        
+        with open(wh_path, "w") as f: f.write(wh_csv)
+        with open(obs_path, "w") as f: f.write(obs_csv)
+        with open(ceil_path, "w") as f: f.write(ceil_csv)
+        with open(bays_path, "w") as f: f.write(bays_csv)
+        
+        print(f"  [solver_cpp] Executing C++ binary...", file=sys.stderr)
+        result = subprocess.run(
+            [solver_bin, wh_path, obs_path, ceil_path, bays_path, out_path],
+            capture_output=True, text=True
+        )
+        
+        if result.returncode != 0:
+            print(f"  [solver_cpp] ERROR:\n{result.stderr}", file=sys.stderr)
+            raise RuntimeError(f"C++ solver failed with exit code {result.returncode}")
+            
+        print(result.stderr, file=sys.stderr)
+        
+        if os.path.exists(out_path):
+            with open(out_path, "r") as f:
+                reader = csv.reader(f)
+                header = next(reader, None) # Skip header
+                for row in reader:
+                    if len(row) >= 4:
+                        try:
+                            snapshot.append((
+                                int(row[0]), 
+                                float(row[1]), 
+                                float(row[2]), 
+                                float(row[3])
+                            ))
+                        except ValueError:
+                            pass
+
+    print(f"  [solver_cpp] done: {len(snapshot)} bays in {time.time() - t0:.1f}s", file=sys.stderr)
+    return snapshot
+
+
+# ---------------------------------------------------------------------------
 # Build world-compatible JSON from snapshot (no MongoDB IDs)
 # ---------------------------------------------------------------------------
 
@@ -120,26 +180,29 @@ def _build_world(snapshot, perimeter, obstacles_raw, ceiling_raw, catalog):
 # Public async entry point
 # ---------------------------------------------------------------------------
 
-async def run_solver(wh_csv: str, obs_csv: str, ceil_csv: str, bays_csv: str) -> dict:
+async def run_solver(wh_csv: str, obs_csv: str, ceil_csv: str, bays_csv: str, algorithm: str = "cpp") -> dict:
     perimeter    = parse_warehouse(wh_csv)
     obstacles_raw = parse_obstacles(obs_csv)
     ceiling_raw  = parse_ceiling(ceil_csv)
     catalog      = parse_bay_catalog(bays_csv)
 
-    wh_verts  = [(float(p["x"]), float(p["y"])) for p in perimeter]
-    ceil_pts  = [(float(s["xFrom"]), float(s["maxHeight"])) for s in ceiling_raw]
-    obs_tuples = [(float(o["x"]), float(o["y"]), float(o["width"]), float(o["depth"]))
-                  for o in obstacles_raw]
+    if algorithm == "cpp":
+        snapshot = await asyncio.to_thread(_run_cpp, wh_csv, obs_csv, ceil_csv, bays_csv)
+    else:
+        wh_verts  = [(float(p["x"]), float(p["y"])) for p in perimeter]
+        ceil_pts  = [(float(s["xFrom"]), float(s["maxHeight"])) for s in ceiling_raw]
+        obs_tuples = [(float(o["x"]), float(o["y"]), float(o["width"]), float(o["depth"]))
+                      for o in obstacles_raw]
 
-    sorted_catalog = sorted(catalog, key=lambda b: b["typeId"])
-    bay_types = [
-        make_bay_type(
-            b["typeId"],
-            float(b["width"]), float(b["depth"]), float(b["height"]),
-            float(b["gap"]), int(b["nLoads"]), float(b["price"]),
-        )
-        for b in sorted_catalog
-    ]
+        sorted_catalog = sorted(catalog, key=lambda b: b["typeId"])
+        bay_types = [
+            make_bay_type(
+                b["typeId"],
+                float(b["width"]), float(b["depth"]), float(b["height"]),
+                float(b["gap"]), int(b["nLoads"]), float(b["price"]),
+            )
+            for b in sorted_catalog
+        ]
+        snapshot = await asyncio.to_thread(_run, wh_verts, obs_tuples, ceil_pts, bay_types)
 
-    snapshot = await asyncio.to_thread(_run, wh_verts, obs_tuples, ceil_pts, bay_types)
     return _build_world(snapshot, perimeter, obstacles_raw, ceiling_raw, catalog)
