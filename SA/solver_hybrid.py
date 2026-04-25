@@ -49,7 +49,7 @@ def main():
 
     solvers = {
         'Ortho': 'solver.py',
-        'SAT': 'solver_flex.py'
+        'SAT': './solver_flex'
     }
 
     procs = {}
@@ -60,7 +60,10 @@ def main():
     
     for name, script in solvers.items():
         tmp_out = f"{final_out}_{name.lower()}_{pid}.tmp.csv"
-        cmd = ["python3", "-u", script] + args + [tmp_out]
+        if script.endswith('.py'):
+            cmd = ["python3", "-u", script] + args + [tmp_out]
+        else:
+            cmd = [script] + args + [tmp_out]
         
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
