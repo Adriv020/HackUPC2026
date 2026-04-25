@@ -128,7 +128,7 @@ export function WarehousePlayground() {
     async function run() {
       try {
         setLoadingMessage("Running solver (~30 s)…")
-        const world = await solve(uploads as Required<UploadState>)
+        const world = await solve(uploads as { warehouse: string; obstacles: string; ceiling: string; bays: string; })
         if (cancelled) return
 
         const { polygon, obstacles, ceilingProfile, placedBays, bayTypes } = mapWorldToScene(world)
@@ -143,22 +143,6 @@ export function WarehousePlayground() {
       } finally {
         if (!cancelled) setIsLoading(false)
       }
-      const obstacles = parseObstaclesCSV(uploads.obstacles!)
-      const ceilingProfile = parseCeilingCSV(uploads.ceiling!)
-      const bayTypes = parseBaysCSV(uploads.bays!)
-
-      // Place bays using the layout algorithm
-      const placed = placeBays(bayTypes, polygon, obstacles, ceilingProfile)
-      console.log(`[WarehouseOS] Total bays placed: ${placed.length}`)
-
-      setParsedData({ polygon, obstacles, ceilingProfile, bayTypes, placedBays: placed })
-      setIntroStartMs(performance.now())
-      setIntroPhase("intro_orbit")
-      setSelectedBayId(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to parse CSV files")
-    } finally {
-      setIsLoading(false)
     }
 
     run()
