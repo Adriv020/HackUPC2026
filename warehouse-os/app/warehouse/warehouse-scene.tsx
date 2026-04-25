@@ -87,15 +87,18 @@ type Props = {
   selectedBayId: string | null
   onSelectBay: (bayId: string) => void
   onClearSelection: () => void
-  exteriorMode: ExteriorMode
-  viewMode: "3d" | "floor_plan"
+  exteriorMode?: ExteriorMode
+  viewMode?: "3d" | "floor_plan"
+  isMiniMap?: boolean
 }
 
 export function WarehouseScene({
   polygon, obstacles, ceilingProfile, placedBays,
   introPhase, introStartMs, onIntroDone,
   selectedBayId, onSelectBay, onClearSelection,
-  exteriorMode, viewMode,
+  exteriorMode = "auto",
+  viewMode = "3d",
+  isMiniMap = false,
 }: Props) {
   const bounds = useMemo(() => computeWarehouseBounds(polygon), [polygon])
   const [cx, cz] = useMemo(() => computeWarehouseCentroid(polygon), [polygon])
@@ -124,10 +127,13 @@ export function WarehouseScene({
 
   return (
     <Canvas
-      camera={{ position: initPos, fov: 45, near: 0.1, far: 3000 }}
-      shadows
-      dpr={[1, 1.5]}
-      gl={{ antialias: true, powerPreference: "high-performance", alpha: true }}
+      camera={isMiniMap 
+        ? { position: [cx, 1000, cz] as [number, number, number], near: 0.1, far: 3000 }  // neutral position, FloorPlanCamera will override
+        : { position: initPos, fov: 45, near: 0.1, far: 3000 }
+      }
+      shadows={!isMiniMap}
+      dpr={isMiniMap ? [1, 1] : [1, 1.5]} // lower DPR for mini-map
+      gl={{ antialias: !isMiniMap, powerPreference: "high-performance", alpha: true }}
       onPointerMissed={onClearSelection}
     >
       {/* Fog blends the terrain edge into the light horizon */}
@@ -186,7 +192,8 @@ export function WarehouseScene({
         viewMode={viewMode}
       />
 
-      {viewMode === "floor_plan" && (
+      {/* Always use FloorPlanCamera in mini-map, otherwise only when viewMode === floor_plan */}
+      {(isMiniMap || viewMode === "floor_plan") && (
         <FloorPlanCamera cx={cx} cz={cz} maxDim={maxDim} />
       )}
 
@@ -197,20 +204,23 @@ export function WarehouseScene({
         />
       )}
 
-      <OrbitControls
-        enabled={introPhase === "interactive"}
-        enableRotate={viewMode === "3d"}
-        enableDamping
-        dampingFactor={0.08}
-        target={[cx, 0, cz]}
-        minDistance={10}
-        maxDistance={500}
-        minPolarAngle={viewMode === "floor_plan" ? 0 : 0}
-        maxPolarAngle={viewMode === "floor_plan" ? 0 : Math.PI / 2.1}
-        minAzimuthAngle={viewMode === "floor_plan" ? 0 : -Infinity}
-        maxAzimuthAngle={viewMode === "floor_plan" ? 0 : Infinity}
-        mouseButtons={{ LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.PAN }}
-      />
+      {/* No orbit controls at all for mini-map */}
+      {!isMiniMap && (
+        <OrbitControls
+          enabled={introPhase === "interactive"}
+          enableRotate={viewMode === "3d"}
+          enableDamping
+          dampingFactor={0.08}
+          target={[cx, 0, cz]}
+          minDistance={10}
+          maxDistance={500}
+          minPolarAngle={0}
+          maxPolarAngle={viewMode === "floor_plan" ? 0 : Math.PI / 2.1}
+          minAzimuthAngle={viewMode === "floor_plan" ? 0 : -Infinity}
+          maxAzimuthAngle={viewMode === "floor_plan" ? 0 : Infinity}
+          mouseButtons={{ LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.PAN }}
+        />
+      )}
     </Canvas>
   )
 }

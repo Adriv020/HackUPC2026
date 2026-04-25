@@ -53,6 +53,7 @@ export type PlacedBay = {
   id: string
   typeId: string
   position: [number, number, number] // Three.js [x, 0, z] — bottom-centre of bay footprint
+  rotation?: number // Exact 3D rotation around Y axis in degrees
   width: number
   depth: number
   height: number

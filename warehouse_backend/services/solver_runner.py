@@ -142,21 +142,29 @@ def _build_world(snapshot, perimeter, obstacles_raw, ceiling_raw, catalog):
     rows_dict: dict[str, list] = {}
     total_revenue = 0.0
 
-    for tid, x, y, rotation in snapshot:
+    import math
+
+    for i, (tid, x, y, rotation) in enumerate(snapshot):
         bt = catalog_map[tid]
         w = float(bt["width"])
-        d = float(bt["depth"]) + float(bt["gap"])
-        corners = get_obb_corners(float(x), float(y), w, d, float(rotation))
+        d = float(bt["depth"])
+        g = float(bt["gap"])
+        
+        # Calculate exact geometric center of the physical rack (excluding gap)
+        rad = math.radians(float(rotation))
+        cx = float(x) + (w / 2) * math.cos(rad) - (d / 2) * math.sin(rad)
+        cy = float(y) + (w / 2) * math.sin(rad) + (d / 2) * math.cos(rad)
+
+        corners = get_obb_corners(float(x), float(y), w, d + g, float(rotation))
         x1, y1, x2, y2 = aabb_from_corners(corners)
-        norm_rot = 0 if (x2 - x1) >= (y2 - y1) else 90
 
         total_revenue += bt["price"]
         row_id = f"row-{int(y1)}"
         rows_dict.setdefault(row_id, []).append({
-            "bayId": f"bay-{tid}-{round(x1)}-{round(y1)}",
+            "bayId": f"bay-{tid}-{i}-{round(x)}-{round(y)}",
             "typeId": tid,
-            "position": {"x": round(x1), "y": round(y1), "z": 0},
-            "rotation": norm_rot,
+            "position": {"x": cx, "y": cy, "z": 0},
+            "rotation": float(rotation),
             "dimensions": {
                 "width": bt["width"],
                 "depth": bt["depth"],

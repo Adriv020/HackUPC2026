@@ -39,21 +39,16 @@ export function mapWorldToScene(world: WorldResponse): {
 
   const placedBays: PlacedBay[] = world.rows.flatMap(row =>
     row.bays.map(bay => {
-      const isRotated = bay.rotation === 90
       const { width, depth, height } = bay.dimensions
 
-      // Rotated bays swap width↔depth along the X/Z axes
-      const footW = isRotated ? depth : width
-      const footD = isRotated ? width : depth
-
-      // Backend position is bottom-left corner of footprint in mm
-      const centerX = (bay.position.x + footW / 2) * SCALE
-      const centerZ = -((bay.position.y + footD / 2) * SCALE)
+      // Backend now sends the exact physical center of the bay
+      const centerX = bay.position.x * SCALE
+      const centerZ = -(bay.position.y * SCALE)
 
       const bayTypeData: BayTypeConfig = {
         typeId: String(bay.typeId),
-        width: footW * SCALE,
-        depth: footD * SCALE,
+        width: width * SCALE,
+        depth: depth * SCALE,
         height: height * SCALE,
         gap: 0,
         nLoads: bay.nLoads,
@@ -64,8 +59,9 @@ export function mapWorldToScene(world: WorldResponse): {
         id: bay.bayId,
         typeId: String(bay.typeId),
         position: [centerX, 0, centerZ] as [number, number, number],
-        width: footW * SCALE,
-        depth: footD * SCALE,
+        rotation: bay.rotation, // Exact geometric rotation passed through
+        width: width * SCALE,
+        depth: depth * SCALE,
         height: height * SCALE,
         bayTypeData,
       }

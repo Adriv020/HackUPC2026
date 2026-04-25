@@ -240,7 +240,7 @@ export function WarehousePlayground() {
           </button>
         </div>
 
-        {/* ── Status chip ─────────────────────────────────────────────────── */}
+        {/* ── Status chip + Exterior Controls (unified right panel) ─────────── */}
         <div className="pointer-events-none absolute top-4 right-4 z-20 flex flex-col items-end gap-2">
           <div
             className="rounded-full border px-3 py-1 text-xs font-medium tracking-wide backdrop-blur"
@@ -262,59 +262,44 @@ export function WarehousePlayground() {
           >
             {parsedData.placedBays.length} bays placed
           </div>
-        </div>
 
-        {/* ── View Mode Controls ────────────────────────────────────────────── */}
-        <div className="pointer-events-auto absolute top-24 right-4 z-20 flex flex-col items-end gap-2">
-          <button
-            onClick={() => setViewMode(v => v === "3d" ? "floor_plan" : "3d")}
-            className="rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
-            style={{
-              borderColor: "rgba(15,23,42,0.15)",
-              background: "rgba(255,255,255,0.6)",
-              color: "rgba(15,23,42,0.8)",
-            }}
-          >
-            {viewMode === "3d" ? "🔲 Top View" : "🧊 3D View"}
-          </button>
-        </div>
-
-        {/* ── Exterior Controls ────────────────────────────────────────────── */}
-        <div className="pointer-events-auto absolute top-[140px] right-4 z-20 flex flex-col items-end">
-          <button
-            onClick={() => setIsExteriorMenuOpen(prev => !prev)}
-            className="rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
-            style={{
-              borderColor: "rgba(15,23,42,0.15)",
-              background: "rgba(255,255,255,0.6)",
-              color: "rgba(15,23,42,0.8)",
-            }}
-          >
-            Exterior: <span className="capitalize">{exteriorMode}</span> ▾
-          </button>
-          
-          {isExteriorMenuOpen && (
-            <div className="mt-2 flex flex-col overflow-hidden rounded-lg border backdrop-blur"
+          {/* Exterior dropdown — directly below, no gap */}
+          <div className="pointer-events-auto flex flex-col items-end">
+            <button
+              onClick={() => setIsExteriorMenuOpen(prev => !prev)}
+              className="rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
               style={{
                 borderColor: "rgba(15,23,42,0.15)",
-                background: "rgba(255,255,255,0.8)",
+                background: "rgba(255,255,255,0.6)",
+                color: "rgba(15,23,42,0.8)",
               }}
             >
-              {(["auto", "hidden", "translucent"] as ExteriorMode[]).map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => { setExteriorMode(mode); setIsExteriorMenuOpen(false) }}
-                  className="px-4 py-2 text-sm text-left hover:bg-black/5 capitalize transition-colors"
-                  style={{
-                    color: exteriorMode === mode ? "#000" : "rgba(15,23,42,0.7)",
-                    fontWeight: exteriorMode === mode ? 600 : 400
-                  }}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
-          )}
+              Exterior: <span className="capitalize">{exteriorMode}</span> ▾
+            </button>
+
+            {isExteriorMenuOpen && (
+              <div className="mt-2 flex flex-col overflow-hidden rounded-lg border backdrop-blur"
+                style={{
+                  borderColor: "rgba(15,23,42,0.15)",
+                  background: "rgba(255,255,255,0.8)",
+                }}
+              >
+                {(["auto", "hidden", "translucent"] as ExteriorMode[]).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => { setExteriorMode(mode); setIsExteriorMenuOpen(false) }}
+                    className="px-4 py-2 text-sm text-left hover:bg-black/5 capitalize transition-colors"
+                    style={{
+                      color: exteriorMode === mode ? "#000" : "rgba(15,23,42,0.7)",
+                      fontWeight: exteriorMode === mode ? 600 : 400
+                    }}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Info panel — shown when a bay is selected ──────────────────── */}
@@ -326,6 +311,43 @@ export function WarehousePlayground() {
             />
           </div>
         )}
+
+        {/* ── Picture-in-Picture Mini-Map ─────────────────────────────────── */}
+        <div 
+          className="pointer-events-auto absolute bottom-6 right-6 z-30 h-48 w-48 overflow-hidden rounded-2xl border-4 shadow-2xl transition-transform hover:scale-105 active:scale-95 sm:h-64 sm:w-64"
+          style={{ 
+            borderColor: "white", 
+            background: viewMode === "3d" ? "#f8fafc" : "linear-gradient(to bottom, #76d0f5 0%, #f4f8fa 100%)",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)"
+          }}
+        >
+          {/* We render a second tiny scene instance with the INVERTED viewMode */}
+          <WarehouseScene
+            polygon={parsedData.polygon}
+            obstacles={parsedData.obstacles}
+            ceilingProfile={parsedData.ceilingProfile}
+            placedBays={parsedData.placedBays}
+            introPhase="interactive" // Skip the camera intro animation!
+            introStartMs={0}
+            onIntroDone={() => {}}
+            selectedBayId={null} // Don't highlight selections in the mini map
+            onSelectBay={() => {}}
+            onClearSelection={() => {}}
+            exteriorMode={exteriorMode}
+            viewMode={viewMode === "3d" ? "floor_plan" : "3d"}
+            isMiniMap={true}
+          />
+          
+          {/* Invisible interactive overlay to intercept all clicks and prevent orbit control panning */}
+          <button
+            className="absolute inset-0 h-full w-full cursor-pointer focus:outline-none"
+            title={`Switch to ${viewMode === "3d" ? "Floor Plan" : "3D"} View`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setViewMode(v => v === "3d" ? "floor_plan" : "3d");
+            }}
+          />
+        </div>
       </div>
     )
   }
