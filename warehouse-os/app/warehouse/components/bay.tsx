@@ -12,12 +12,12 @@ type BayProps = {
 
 const CLICK_DELTA_THRESHOLD = 4
 
-// Colours — low-poly game aesthetic
-const COLOR_UPRIGHT  = "#2d3748"  // dark steel posts
-const COLOR_BEAM     = "#4a5568"  // medium steel beams
-const COLOR_SHELF    = "#718096"  // shelf surface board
-const COLOR_SELECTED = "#63b3ed"  // selection blue highlight
-const COLOR_HOVER    = "#63b3ed"  // hover highlight
+// Colours — warm industrial aesthetic, bright warehouse
+const COLOR_UPRIGHT  = "#5a6470"  // charcoal steel posts
+const COLOR_BEAM     = "#7a8898"  // mid steel beams
+const COLOR_SHELF    = "#94a3b5"  // shelf surface board
+const COLOR_SELECTED = "#2563eb"  // strong blue highlight
+const COLOR_HOVER    = "#3b82f6"  // hover highlight
 
 export function Bay({ bay, isSelected, onSelectBay }: BayProps) {
   const [hoveredLevel, setHoveredLevel] = useState<number | null>(null)

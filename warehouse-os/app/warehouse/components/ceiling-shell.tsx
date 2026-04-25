@@ -101,20 +101,21 @@ export function CeilingShell({ polygon, ceilingProfile }: Props) {
         const edgesGeo = new THREE.EdgesGeometry(geo)
         return (
           <group key={panel.key} position={[0, panel.height, 0]}>
-            {/* BUG 3: Very pale blue, highly transparent, flat shading */}
+            {/* Warm near-white ceiling slab — barely visible, lets sunlight feel right */}
             <mesh geometry={geo}>
               <meshStandardMaterial
-                color="#ebf8ff"
+                color="#e8e2d8"
                 transparent
-                opacity={0.15}
-                flatShading={true}
+                opacity={0.25}
+                roughness={0.8}
+                flatShading={false}
                 side={THREE.DoubleSide}
                 depthWrite={false}
               />
             </mesh>
-            {/* BUG 3: Ceiling edge outlines in light blue */}
+            {/* Structural edge lines on ceiling */}
             <lineSegments geometry={edgesGeo}>
-              <lineBasicMaterial color="#90cdf4" linewidth={1} transparent opacity={0.5} />
+              <lineBasicMaterial color="#b0a898" linewidth={1} transparent opacity={0.4} />
             </lineSegments>
           </group>
         )

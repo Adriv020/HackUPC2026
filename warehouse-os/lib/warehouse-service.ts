@@ -398,10 +398,10 @@ function collides(
 
   // Check against obstacles
   for (const obs of obstacles) {
-    // obs.z = -(csvY * SCALE) — already in Three.js coords, depth is positive size
-    // So the obstacle spans from obs.z to obs.z + obs.depth in Z
-    const obsMinZ = Math.min(obs.z, obs.z + obs.depth)
-    const obsMaxZ = Math.max(obs.z, obs.z + obs.depth)
+    // obs.z = -(csvY * SCALE), depth extends in -Z direction
+    // So obstacle spans Z from (obs.z - obs.depth) to obs.z
+    const obsMinZ = obs.z - obs.depth
+    const obsMaxZ = obs.z
     const obsMinX = obs.x
     const obsMaxX = obs.x + obs.width
     if (rectsOverlap(x, z, w, d, obsMinX, obsMinZ, obsMaxX - obsMinX, obsMaxZ - obsMinZ)) return true

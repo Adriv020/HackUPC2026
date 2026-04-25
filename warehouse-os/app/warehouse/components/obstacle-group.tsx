@@ -20,7 +20,8 @@ export function ObstacleGroup({ obstacles, ceilingProfile }: Props) {
         // depth is always a positive dimension, so it spans obs.z to obs.z + depth in Z.
         // Both z and z+depth may be negative, but centre is always obs.z + depth/2.
         const centerX = obs.x + obs.width / 2
-        const centerZ = obs.z + obs.depth / 2
+        // depth extends in -Z direction (CSV depth → -Z in Three.js)
+        const centerZ = obs.z - obs.depth / 2
         const obsHeight = getCeilingHeight(ceilingProfile, centerX)
 
         const boxGeo = new THREE.BoxGeometry(obs.width, obsHeight, obs.depth)
@@ -33,12 +34,12 @@ export function ObstacleGroup({ obstacles, ceilingProfile }: Props) {
           >
             <mesh castShadow receiveShadow>
               <boxGeometry args={[obs.width, obsHeight, obs.depth]} />
-              {/* BUG 3: Red-orange to make pillars/obstructions highly visible */}
+              {/* Warm red-orange pillar/obstruction — high visibility */}
               <meshStandardMaterial
-                color="#e53e3e"
-                roughness={0.6}
-                metalness={0.1}
-                flatShading={true}
+                color="#c0392b"
+                roughness={0.65}
+                metalness={0.05}
+                flatShading={false}
               />
             </mesh>
             {/* BUG 3: Edge outlines for obstacle boxes */}

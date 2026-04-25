@@ -69,15 +69,15 @@ function UploadCard({
     <label
       className="flex cursor-pointer flex-col gap-2 rounded-xl border p-4 transition-colors"
       style={{
-        borderColor: loaded ? "rgba(52,211,153,0.35)" : "rgba(255,255,255,0.08)",
-        background: loaded ? "rgba(6,78,59,0.15)" : "rgba(255,255,255,0.03)",
+        borderColor: loaded ? "rgba(52,211,153,0.5)" : "rgba(15,23,42,0.15)",
+        background: loaded ? "rgba(209,250,229,0.8)" : "rgba(255,255,255,0.6)",
       }}
     >
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-white">{label}</span>
-        {loaded && <span className="text-xs text-emerald-400">✓ Loaded</span>}
+        <span className="text-sm font-medium text-slate-900">{label}</span>
+        {loaded && <span className="text-xs text-emerald-600">✓ Loaded</span>}
       </div>
-      <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{desc}</p>
+      <p className="text-xs" style={{ color: "rgba(15,23,42,0.6)" }}>{desc}</p>
       <input
         type="file"
         accept=".csv,text/csv,text/plain"
@@ -90,8 +90,8 @@ function UploadCard({
       <div
         className="rounded border border-dashed px-3 py-2 text-center text-xs"
         style={{
-          borderColor: loaded ? "rgba(52,211,153,0.3)" : "rgba(255,255,255,0.15)",
-          color: loaded ? "rgba(52,211,153,0.7)" : "rgba(255,255,255,0.3)",
+          borderColor: loaded ? "rgba(52,211,153,0.5)" : "rgba(15,23,42,0.25)",
+          color: loaded ? "rgba(5,150,105,0.8)" : "rgba(15,23,42,0.6)",
         }}
       >
         {loaded ? "Click to replace" : "Click to upload"}
@@ -192,7 +192,7 @@ export function WarehousePlayground() {
     return (
       <div
         className="relative h-svh w-full overflow-hidden"
-        style={{ background: "#1a202c" }}
+        style={{ background: "#c8e6f5" }}
       >
         {/* R3F canvas fills the screen */}
         <div className="absolute inset-0">
@@ -214,11 +214,11 @@ export function WarehousePlayground() {
         <div className="pointer-events-auto absolute top-4 left-4 z-20">
           <button
             onClick={handleReset}
-            className="rounded-full border px-4 py-2 text-sm backdrop-blur"
+            className="rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
             style={{
-              borderColor: "rgba(255,255,255,0.1)",
-              background: "rgba(0,0,0,0.6)",
-              color: "rgba(255,255,255,0.7)",
+              borderColor: "rgba(15,23,42,0.15)",
+              background: "rgba(255,255,255,0.6)",
+              color: "rgba(15,23,42,0.8)",
             }}
           >
             ← Upload New Files
@@ -230,9 +230,9 @@ export function WarehousePlayground() {
           <div
             className="rounded-full border px-3 py-1.5 text-xs backdrop-blur"
             style={{
-              borderColor: "rgba(255,255,255,0.08)",
-              background: "rgba(0,0,0,0.4)",
-              color: "rgba(255,255,255,0.45)",
+              borderColor: "rgba(15,23,42,0.1)",
+              background: "rgba(255,255,255,0.5)",
+              color: "rgba(15,23,42,0.6)",
             }}
           >
             {introPhase === "intro_orbit"
@@ -246,9 +246,9 @@ export function WarehousePlayground() {
           <div
             className="rounded-full border px-3 py-1.5 text-xs backdrop-blur"
             style={{
-              borderColor: "rgba(99,179,237,0.2)",
-              background: "rgba(26,32,44,0.6)",
-              color: "rgba(144,205,244,0.7)",
+              borderColor: "rgba(37,99,235,0.2)",
+              background: "rgba(219,234,254,0.6)",
+              color: "rgba(30,64,175,0.8)",
             }}
           >
             {parsedData.placedBays.length} / {parsedData.bayTypes.reduce((s, t) => s + t.count, 0)} bays placed
@@ -273,21 +273,21 @@ export function WarehousePlayground() {
   return (
     <div
       className="flex min-h-svh flex-col items-center justify-center p-6"
-      style={{ background: "#1a202c" }}
+      style={{ background: "#c8e6f5" }}
     >
       <div className="w-full max-w-2xl space-y-6">
 
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-white">WarehouseOS</h1>
-          <p className="mt-2 text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">WarehouseOS</h1>
+          <p className="mt-2 text-sm" style={{ color: "rgba(15,23,42,0.6)" }}>
             Upload your four CSV files to build the 3D scene
           </p>
         </div>
 
         {/* Quick-load test cases */}
         <div className="flex items-center justify-center gap-3">
-          <span className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
+          <span className="text-xs" style={{ color: "rgba(15,23,42,0.6)" }}>
             Quick load:
           </span>
           {[0, 1, 2, 3].map(n => (
@@ -295,11 +295,11 @@ export function WarehousePlayground() {
               key={n}
               onClick={() => handleLoadTestCase(n)}
               disabled={isLoading}
-              className="rounded border px-3 py-1 text-xs transition-colors disabled:opacity-40"
+              className="rounded border px-3 py-1 text-xs transition-colors disabled:opacity-40 hover:bg-white/40"
               style={{
-                borderColor: "rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.05)",
-                color: "rgba(255,255,255,0.65)",
+                borderColor: "rgba(15,23,42,0.2)",
+                background: "rgba(255,255,255,0.5)",
+                color: "rgba(15,23,42,0.8)",
               }}
             >
               Case {n}
@@ -309,9 +309,9 @@ export function WarehousePlayground() {
 
         {/* Divider */}
         <div className="flex items-center gap-3">
-          <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
-          <span className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>or upload manually</span>
-          <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
+          <div className="h-px flex-1" style={{ background: "rgba(15,23,42,0.15)" }} />
+          <span className="text-xs" style={{ color: "rgba(15,23,42,0.4)" }}>or upload manually</span>
+          <div className="h-px flex-1" style={{ background: "rgba(15,23,42,0.15)" }} />
         </div>
 
         {/* File upload cards */}
@@ -350,12 +350,12 @@ export function WarehousePlayground() {
               className="h-1.5 w-1.5 rounded-full transition-colors"
               style={{
                 background: uploads[k] !== null
-                  ? "rgba(52,211,153,0.8)"
-                  : "rgba(255,255,255,0.15)",
+                  ? "rgba(5,150,105,0.8)"
+                  : "rgba(15,23,42,0.2)",
               }}
             />
           ))}
-          <span className="ml-2 text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
+          <span className="ml-2 text-xs" style={{ color: "rgba(15,23,42,0.6)" }}>
             {Object.values(uploads).filter(v => v !== null).length} / 4 loaded
           </span>
         </div>
@@ -378,7 +378,7 @@ export function WarehousePlayground() {
         {isLoading && (
           <div
             className="text-center text-sm"
-            style={{ color: "rgba(255,255,255,0.4)" }}
+            style={{ color: "rgba(15,23,42,0.6)" }}
           >
             Parsing CSV files and building scene…
           </div>
