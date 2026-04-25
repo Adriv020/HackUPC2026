@@ -25,9 +25,9 @@ function buildCeilingPanelGeo(clippedPoly: Point2D[], thickness: number): THREE.
   // ExtrudeGeometry extrudes along Z by default.
   // We rotate -PI/2 around X to make it lie flat in XZ (horizontal slab).
   const shape = new THREE.Shape()
-  shape.moveTo(clippedPoly[0].x, clippedPoly[0].z)
+  shape.moveTo(clippedPoly[0].x, -clippedPoly[0].z)
   for (let i = 1; i < clippedPoly.length; i++) {
-    shape.lineTo(clippedPoly[i].x, clippedPoly[i].z)
+    shape.lineTo(clippedPoly[i].x, -clippedPoly[i].z)
   }
   shape.closePath()
 
