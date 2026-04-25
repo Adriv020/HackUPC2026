@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useRef } from "react"
 import * as THREE from "three"
+import { useFrame } from "@react-three/fiber"
 import {
   clipPolygonToXStrip,
   computeWarehouseBounds,
@@ -45,7 +46,64 @@ const PANEL_THICKNESS = 0.1
 export function CeilingShell({ polygon, ceilingProfile }: Props) {
   const { points } = polygon
   const bounds = useMemo(() => computeWarehouseBounds(polygon), [polygon])
+  const gridCenter = useMemo(
+    () => [(bounds.minX + bounds.maxX) / 2, (bounds.minZ + bounds.maxZ) / 2] as [number, number],
+    [bounds]
+  )
   const { segments } = ceilingProfile
+
+  const materialRefs = useRef<THREE.MeshStandardMaterial[]>([])
+  const fadeValueRef = useRef(1)
+  const focusPointRef = useRef(new THREE.Vector3())
+
+  const registerMaterial = (material: THREE.MeshStandardMaterial | null) => {
+    if (!material) return
+    if (materialRefs.current.includes(material)) return
+    materialRefs.current.push(material)
+  }
+
+  useFrame(({ camera }, delta) => {
+    const focus = focusPointRef.current
+    focus.set(gridCenter[0], 2, gridCenter[1])
+    const distance = camera.position.distanceTo(focus)
+    
+    // Fade out when zooming close to the center
+    const maxDim = Math.max(bounds.width, bounds.depth)
+    const nearHideDistance = maxDim * 0.45
+    const farShowDistance = nearHideDistance + 10
+    
+    const targetFade = Math.max(0, Math.min(1, (distance - nearHideDistance) / (farShowDistance - nearHideDistance)))
+    const smoothFactor = Math.max(0, Math.min(1, delta * 4.8))
+    fadeValueRef.current += (targetFade - fadeValueRef.current) * smoothFactor
+    
+    const opacity = Math.pow(fadeValueRef.current, 1.1)
+    const depthWrite = opacity > 0.96
+    
+    for (const material of materialRefs.current) {
+      material.opacity = opacity
+      material.depthWrite = depthWrite
+    }
+  })
+
+  // Generate a procedural ribbed texture for the roof slats
+  const roofTexture = useMemo(() => {
+    const canvas = document.createElement("canvas")
+    canvas.width = 128
+    canvas.height = 128
+    const context = canvas.getContext("2d")
+    if (context) {
+      context.fillStyle = "#6e7f9c" // Base blue/grey
+      context.fillRect(0, 0, 128, 128)
+      context.fillStyle = "#5c6b87" // Darker slat line
+      context.fillRect(0, 110, 128, 18)
+    }
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.wrapS = THREE.RepeatWrapping
+    tex.wrapT = THREE.RepeatWrapping
+    // Repeat more on the Z axis to create horizontal slats
+    tex.repeat.set(1, Math.max(bounds.depth / 2, 5))
+    return tex
+  }, [bounds])
 
   const panels = useMemo(() => {
     if (segments.length === 0) return []
@@ -101,21 +159,21 @@ export function CeilingShell({ polygon, ceilingProfile }: Props) {
         const edgesGeo = new THREE.EdgesGeometry(geo)
         return (
           <group key={panel.key} position={[0, panel.height, 0]}>
-            {/* Warm near-white ceiling slab — barely visible, lets sunlight feel right */}
-            <mesh geometry={geo}>
+            {/* Opaque procedural ribbed roof panel */}
+            <mesh geometry={geo} castShadow receiveShadow>
               <meshStandardMaterial
-                color="#e8e2d8"
+                ref={registerMaterial}
+                map={roofTexture}
+                color="#ffffff" // Texture provides the color
                 transparent
-                opacity={0.25}
-                roughness={0.8}
-                flatShading={false}
+                opacity={1}
+                roughness={0.9}
                 side={THREE.DoubleSide}
-                depthWrite={false}
               />
             </mesh>
-            {/* Structural edge lines on ceiling */}
+            {/* Roof edge trim */}
             <lineSegments geometry={edgesGeo}>
-              <lineBasicMaterial color="#b0a898" linewidth={1} transparent opacity={0.4} />
+              <lineBasicMaterial color="#3d4960" linewidth={2} transparent opacity={1} />
             </lineSegments>
           </group>
         )
