@@ -67,3 +67,21 @@
     display: none;
   }
 }
+
+@keyframes progress-shine {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+
+.progress-bar-animated {
+  background: linear-gradient(
+    90deg,
+    #3b82f6 0%,
+    #60a5fa 35%,
+    #93c5fd 50%,
+    #60a5fa 65%,
+    #3b82f6 100%
+  );
+  background-size: 200% 100%;
+  animation: progress-shine 2s linear infinite;
+}
