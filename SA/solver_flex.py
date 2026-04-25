@@ -55,7 +55,7 @@ def segments_intersect(p1, p2, p3, p4):
 # Constants
 # ---------------------------------------------------------------------------
 TIME_LIMIT = 28.0
-#TIME_LIMIT = 120.0
+#TIME_LIMIT = 60.0
 EPS = 1e-6
 
 # BayType tuple indices
@@ -422,7 +422,7 @@ class State:
         self.active.add(idx)
         self.grid.insert(idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
         self.sum_eff += bt[BT_EFF]
-        self.sum_area += (pb[PB_X2] - pb[PB_X1]) * (pb[PB_Y2] - pb[PB_Y1])
+        self.sum_area += bt[BT_W] * bt[BT_D]
         self.update_candidate_positions()
         return idx
 
@@ -433,7 +433,7 @@ class State:
         self.grid.remove(idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
         self.active.discard(idx)
         self.sum_eff -= bt[BT_EFF]
-        self.sum_area -= (pb[PB_X2] - pb[PB_X1]) * (pb[PB_Y2] - pb[PB_Y1])
+        self.sum_area -= bt[BT_W] * bt[BT_D]
         self.update_candidate_positions()
         return pb
 
@@ -945,6 +945,10 @@ def sa(state: State, time_limit: float):
             T = max(1e-4, T0 * 0.05)
             no_imp = 0
 
+        # Output telemetry every arbitrary block
+        if iters % 100 == 0:
+            print(f"[METRIC] {iters},{time.time()-start:.3f},{T:.2f},{cur_q:.2f},{best_q:.2f}")
+
     state.restore(best_snap)
     elapsed = time.time() - start
     print(f"  SA: {iters} iters ({iters/max(elapsed,0.001):.0f}/s), best Q={best_q:.2f}", file=sys.stderr)
@@ -963,7 +967,7 @@ def _undo(state, info, active_list):
             state.grid.insert(b_idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
             bt = state.bay_types[pb[PB_TID]]
             state.sum_eff += bt[BT_EFF]
-            state.sum_area += (pb[PB_X2] - pb[PB_X1]) * (pb[PB_Y2] - pb[PB_Y1])
+            state.sum_area += bt[BT_W] * bt[BT_D]
         state.update_candidate_positions()
         active_list.clear()
         active_list.extend(state.active)

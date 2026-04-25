@@ -2,17 +2,14 @@
 
 import { useState, useCallback, useEffect } from "react"
 import {
-  parseWarehouseCSV,
-  parseObstaclesCSV,
-  parseCeilingCSV,
-  parseBaysCSV,
-  placeBays,
   type WarehousePolygon,
   type ObstacleConfig,
   type CeilingProfile,
   type PlacedBay,
   type BayTypeConfig,
 } from "@/lib/warehouse-service"
+import { solve } from "@/lib/api"
+import { mapWorldToScene } from "@/lib/world-mapper"
 import { WarehouseScene, type IntroPhase, type ExteriorMode } from "./warehouse-scene"
 import { InfoPanel } from "./components/info-panel"
 import { loadTestCase } from "./actions"
@@ -108,6 +105,7 @@ export function WarehousePlayground() {
   const [uploads, setUploads] = useState<UploadState>(EMPTY_UPLOADS)
   const [parsedData, setParsedData] = useState<ParsedData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [loadingMessage, setLoadingMessage] = useState("Working…")
   const [error, setError] = useState<string | null>(null)
   const [introPhase, setIntroPhase] = useState<IntroPhase>("intro_orbit")
   const [introStartMs, setIntroStartMs] = useState(0)
@@ -120,16 +118,30 @@ export function WarehousePlayground() {
 
   const allUploaded = Object.values(uploads).every(v => v !== null)
 
-  // Parse all CSVs once all four files are present
+  // Send CSVs to backend, run SA solver, return world JSON directly
   useEffect(() => {
     if (!allUploaded) return
+    let cancelled = false
     setIsLoading(true)
     setError(null)
 
-    try {
-      const polygon = parseWarehouseCSV(uploads.warehouse!)
-      if (polygon.points.length < 3) {
-        throw new Error("warehouse.csv must define at least 3 polygon points")
+    async function run() {
+      try {
+        setLoadingMessage("Running solver (~30 s)…")
+        const world = await solve(uploads as Required<UploadState>)
+        if (cancelled) return
+
+        const { polygon, obstacles, ceilingProfile, placedBays, bayTypes } = mapWorldToScene(world)
+        console.log(`[WarehouseOS] ${placedBays.length} bays placed`)
+
+        setParsedData({ polygon, obstacles, ceilingProfile, bayTypes, placedBays })
+        setIntroStartMs(performance.now())
+        setIntroPhase("intro_orbit")
+        setSelectedBayId(null)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to connect to backend")
+      } finally {
+        if (!cancelled) setIsLoading(false)
       }
       const obstacles = parseObstaclesCSV(uploads.obstacles!)
       const ceilingProfile = parseCeilingCSV(uploads.ceiling!)
@@ -148,6 +160,9 @@ export function WarehousePlayground() {
     } finally {
       setIsLoading(false)
     }
+
+    run()
+    return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploads])
 
@@ -436,7 +451,7 @@ export function WarehousePlayground() {
             className="text-center text-sm"
             style={{ color: "rgba(15,23,42,0.6)" }}
           >
-            Parsing CSV files and building scene…
+            {loadingMessage}
           </div>
         )}
       </div>
