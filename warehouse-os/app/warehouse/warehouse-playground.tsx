@@ -8,10 +8,11 @@ import {
   type PlacedBay,
   type BayTypeConfig,
 } from "@/lib/warehouse-service"
-import { solve } from "@/lib/api"
+import { solve, type WorldResponse } from "@/lib/api"
 import { mapWorldToScene } from "@/lib/world-mapper"
 import { WarehouseScene, type IntroPhase, type ExteriorMode } from "./warehouse-scene"
 import { InfoPanel } from "./components/info-panel"
+import { Download } from "lucide-react"
 import { loadTestCase } from "./actions"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -107,6 +108,7 @@ export function WarehousePlayground() {
   const [isLoading, setIsLoading] = useState(false)
   const [loadingMessage, setLoadingMessage] = useState("Working…")
   const [solverProgress, setSolverProgress] = useState(0)
+  const [worldData, setWorldData] = useState<WorldResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [introPhase, setIntroPhase] = useState<IntroPhase>("intro_orbit")
   const [introStartMs, setIntroStartMs] = useState(0)
@@ -136,6 +138,7 @@ export function WarehousePlayground() {
         console.log(`[WarehouseOS] ${placedBays.length} bays placed`)
 
         setLoadingMessage("Done!")
+        setWorldData(world)
         setParsedData({ polygon, obstacles, ceilingProfile, bayTypes, placedBays })
         setIntroStartMs(performance.now())
         setIntroPhase("intro_orbit")
@@ -192,9 +195,27 @@ export function WarehousePlayground() {
     }
   }
 
+  function handleDownloadCSV() {
+    if (!worldData) return
+    const lines = ["Id, X, Y, Rotation"]
+    for (const row of worldData.rows) {
+      for (const bay of row.bays) {
+        lines.push(`${bay.typeId}, ${bay.position.x}, ${bay.position.y}, ${bay.rotation}`)
+      }
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "placement_output.csv"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   function handleReset() {
     setParsedData(null)
     setUploads(EMPTY_UPLOADS)
+    setWorldData(null)
     setSelectedBayId(null)
     setError(null)
   }
@@ -275,8 +296,9 @@ export function WarehousePlayground() {
           </div>
         </div>
 
-        {/* ── View Mode Controls ────────────────────────────────────────────── */}
+        {/* ── Right-side controls ──────────────────────────────────────────── */}
         <div className="pointer-events-auto absolute top-24 right-4 z-20 flex flex-col items-end gap-2">
+          {/* View mode toggle */}
           <button
             onClick={() => setViewMode(v => v === "3d" ? "floor_plan" : "3d")}
             className="rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
@@ -288,44 +310,59 @@ export function WarehousePlayground() {
           >
             {viewMode === "3d" ? "🔲 Top View" : "🧊 3D View"}
           </button>
-        </div>
 
-        {/* ── Exterior Controls ────────────────────────────────────────────── */}
-        <div className="pointer-events-auto absolute top-[140px] right-4 z-20 flex flex-col items-end">
+          {/* Exterior mode dropdown */}
+          <div className="flex flex-col items-end">
+            <button
+              onClick={() => setIsExteriorMenuOpen(prev => !prev)}
+              className="rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
+              style={{
+                borderColor: "rgba(15,23,42,0.15)",
+                background: "rgba(255,255,255,0.6)",
+                color: "rgba(15,23,42,0.8)",
+              }}
+            >
+              Exterior: <span className="capitalize">{exteriorMode}</span> ▾
+            </button>
+
+            {isExteriorMenuOpen && (
+              <div className="mt-2 flex flex-col overflow-hidden rounded-lg border backdrop-blur"
+                style={{
+                  borderColor: "rgba(15,23,42,0.15)",
+                  background: "rgba(255,255,255,0.8)",
+                }}
+              >
+                {(["auto", "hidden", "translucent"] as ExteriorMode[]).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => { setExteriorMode(mode); setIsExteriorMenuOpen(false) }}
+                    className="px-4 py-2 text-sm text-left hover:bg-black/5 capitalize transition-colors"
+                    style={{
+                      color: exteriorMode === mode ? "#000" : "rgba(15,23,42,0.7)",
+                      fontWeight: exteriorMode === mode ? 600 : 400
+                    }}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Download CSV */}
           <button
-            onClick={() => setIsExteriorMenuOpen(prev => !prev)}
-            className="rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
+            onClick={handleDownloadCSV}
+            title="Download placement CSV"
+            className="flex items-center gap-2 rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
             style={{
               borderColor: "rgba(15,23,42,0.15)",
               background: "rgba(255,255,255,0.6)",
               color: "rgba(15,23,42,0.8)",
             }}
           >
-            Exterior: <span className="capitalize">{exteriorMode}</span> ▾
+            <Download size={14} />
+            Export CSV
           </button>
-          
-          {isExteriorMenuOpen && (
-            <div className="mt-2 flex flex-col overflow-hidden rounded-lg border backdrop-blur"
-              style={{
-                borderColor: "rgba(15,23,42,0.15)",
-                background: "rgba(255,255,255,0.8)",
-              }}
-            >
-              {(["auto", "hidden", "translucent"] as ExteriorMode[]).map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => { setExteriorMode(mode); setIsExteriorMenuOpen(false) }}
-                  className="px-4 py-2 text-sm text-left hover:bg-black/5 capitalize transition-colors"
-                  style={{
-                    color: exteriorMode === mode ? "#000" : "rgba(15,23,42,0.7)",
-                    fontWeight: exteriorMode === mode ? 600 : 400
-                  }}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* ── Info panel — shown when a bay is selected ──────────────────── */}
