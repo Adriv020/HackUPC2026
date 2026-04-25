@@ -111,7 +111,7 @@ Height: 3000 ─────┐
 ## Quality Formula
 
 ```
-Q = (Σ Price/nLoads)² × (Σ Width×Depth) / Area_warehouse
+Q = (Σ Price/nLoads)^(2-(Σ Width×Depth / Area_warehouse))
 ```
 
 ## Performance Optimizations

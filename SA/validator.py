@@ -382,21 +382,26 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
         return 1
 
     # Compute quality score
-    sum_eff = 0.0
+    sum_price = 0.0
+    sum_loads = 0
     sum_area = 0.0
     for x1, y1, x2, y2, corners, b, bt, idx in bay_rects:
-        sum_eff += bt['price'] / bt['nLoads']
+        sum_price += bt['price']
+        sum_loads += bt['nLoads']
         sum_area += bt['width'] * bt['depth']
 
-    Q = (sum_eff ** (2.0 - (sum_area / wh_area))) if wh_area > 0 else 0
+    if sum_loads > 0:
+        current_eff = sum_price / sum_loads
+    else:
+        current_eff = 0.0
 
+    Q = (current_eff ** (2.0 - (sum_area / wh_area))) if wh_area > 0 else 0
     print("STATUS: VALID")
     print(f"  Quality score Q = {Q:.2f}")
     print(f"  Total area covered = {sum_area:.0f}")
     print(f"  Warehouse area = {wh_area:.0f}")
     print(f"  Coverage = {sum_area / wh_area * 100:.1f}%")
-    print(f"  Sum(Price/nLoads) = {sum_eff:.4f}")
-    print(f"  [Sum(Price/nLoads)]² = {sum_eff**2:.4f}")
+    print(f"  Overall Efficiency (Price/Loads) = {current_eff:.4f}")
     print(f"  Area ratio = {sum_area / wh_area:.6f}")
     print(f"  Bays placed = {len(bay_rects)}")
 

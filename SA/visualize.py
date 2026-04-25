@@ -146,10 +146,12 @@ def main():
         })
 
     wh_area = polygon_area(wh_data)
-    sum_eff = sum(b["efficiency"] for b in placed)
+    total_price = sum(b["price"] for b in placed)
+    total_loads = sum(b["nLoads"] for b in placed)
+    sum_eff = total_price / total_loads if total_loads > 0 else 0
     sum_area = sum(b["width"] * (b["depth"]) for b in placed)
     quality = (sum_eff ** (2.0 - (sum_area / wh_area))) if wh_area > 0 else 0
-
+    
     data = {
         "warehouse": wh_data,
         "obstacles": [{"x": o[0], "y": o[1], "w": o[2], "d": o[3]} for o in obs_data],

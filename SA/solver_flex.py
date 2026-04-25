@@ -532,6 +532,10 @@ def post_process(state: State):
     and minor rotational shifts (±3 degrees). Keeps feasible shifts unconditionally 
     since type remains the same (efficiency is preserved).
     """
+    # 1. NEW: Save the optimal state before we start messing with it
+    best_q_before = state.quality()
+    best_snap_before = state.snapshot()
+
     shifts = [(-10, 0), (10, 0), (0, -10), (0, 10), (-20, 0), (20, 0), (0, -20), (0, 20),
               (-50, 0), (50, 0), (0, -50), (0, 50), (-100, 0), (100, 0), (0, -100), (0, 100)]
     rotations = [-3.0, 3.0, -6.0, 6.0, -15.0, 15.0, -30.0, 30.0]
@@ -566,6 +570,14 @@ def post_process(state: State):
             
     # Final localized greedy to squeeze any missing bays into the new micro-gaps
     greedy(state, time_limit=3.0)
+
+    # 2. NEW: Check if the greedy algorithm ruined our score. If yes, revert!
+    final_q = state.quality()
+    if final_q > best_q_before:
+        print(f"  [Reverting] Post-process worsened Q: {final_q:.2f} > {best_q_before:.2f}", file=sys.stderr)
+        state.restore(best_snap_before)
+    else:
+        print(f"  [Success] Post-process improved/held Q: {final_q:.2f} <= {best_q_before:.2f}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -1077,6 +1089,10 @@ def main():
     validate(state)
     q_final = state.quality()
     print(f"Final: {len(state.active)} bays, Q={q_final:.2f}, time={time.time()-t0:.1f}s", file=sys.stderr)
+    
+    # 3. Broadcast the absolute final score so the dashboard doesn't log a lie
+    print(f"[METRIC] FINAL,{time.time()-t0:.3f},0.0,{q_final:.2f},{q_final:.2f}")
+    
     write_output(state, out_path)
 
 
