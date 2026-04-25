@@ -12,6 +12,7 @@ import urllib.parse
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import webbrowser
 import threading
+from csv_to_world import build_world_response
 
 PORT = 8000
 PUBLIC_CASES_DIR = "../PublicTestCases"
@@ -59,6 +60,7 @@ HTML = """<!DOCTYPE html>
     display: flex;
     flex: 1;
     min-height: 0;
+    position: relative;
   }
   
   .sidebar {
@@ -174,6 +176,49 @@ HTML = """<!DOCTYPE html>
     box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
   }
   
+  .btn-3d {
+    background: linear-gradient(135deg, #e8621a, #b84d10);
+    color: white;
+  }
+
+  .btn-3d:hover:not(:disabled) {
+    box-shadow: 0 0 15px rgba(232, 98, 26, 0.4);
+  }
+
+  .viewer-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    flex-direction: column;
+    background: #0f1117;
+  }
+
+  .viewer-overlay.active {
+    display: flex;
+  }
+
+  .viewer-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: #13151f;
+    border-bottom: 1px solid rgba(232, 98, 26, 0.3);
+    flex-shrink: 0;
+  }
+
+  .viewer-topbar span {
+    font-size: 14px;
+    color: #9ca3af;
+  }
+
+  .viewer-frame {
+    flex: 1;
+    border: none;
+    width: 100%;
+  }
+  
   .console-panel {
     flex: 1;
     background: #0a0c14;
@@ -285,6 +330,9 @@ HTML = """<!DOCTYPE html>
         <button class="btn btn-visualize" id="btnVisualize" disabled onclick="runVisualize()">
           <span>👁</span> <span id="lblVisualize">Visualize</span>
         </button>
+        <button class="btn btn-3d" id="btn3D" disabled onclick="run3DView()">
+          <span>🧊</span> <span id="lbl3D">3D View</span>
+        </button>
       </div>
     </div>
     
@@ -304,6 +352,17 @@ HTML = """<!DOCTYPE html>
     <div class="graph-panel" id="graphPanel">
         <canvas id="saChart"></canvas>
     </div>
+  </div>
+
+  <!-- 3D Viewer overlay (covers the whole .main area) -->
+  <div class="viewer-overlay" id="viewerOverlay">
+    <div class="viewer-topbar">
+      <button class="btn btn-3d" style="padding:6px 14px; font-size:13px;" onclick="closeViewer()">
+        ← Back
+      </button>
+      <span id="viewerLabel">3D View</span>
+    </div>
+    <iframe class="viewer-frame" id="viewerFrame" src="about:blank"></iframe>
   </div>
 </div>
 
@@ -405,6 +464,7 @@ function selectCase(name, el) {
   document.getElementById('btnSolve').disabled = false;
   document.getElementById('btnValidate').disabled = false;
   document.getElementById('btnVisualize').disabled = false;
+  document.getElementById('btn3D').disabled = false;
   
   if (eventSource) {
     eventSource.close();
@@ -428,6 +488,8 @@ function resetButtons() {
   document.getElementById('btnValidate').disabled = false;
   document.getElementById('lblValidate').innerHTML = 'Validate';
   document.getElementById('btnVisualize').disabled = false;
+  if (currentCase) document.getElementById('btn3D').disabled = false;
+  document.getElementById('lbl3D').innerHTML = '3D View';
   document.getElementById('consoleStatus').textContent = 'Console Output';
 }
 
@@ -532,6 +594,20 @@ async function runVisualize() {
   } finally {
     resetButtons();
   }
+}
+
+function run3DView() {
+  if (!currentCase) return;
+
+  document.getElementById('viewerLabel').textContent = `3D View — ${currentCase}`;
+  document.getElementById('viewerFrame').src = `http://localhost:3000/warehouse?preload=${encodeURIComponent(currentCase)}`;
+  document.getElementById('viewerOverlay').classList.add('active');
+}
+
+function closeViewer() {
+  document.getElementById('viewerOverlay').classList.remove('active');
+  // Blank the iframe so the Next.js app unmounts cleanly
+  document.getElementById('viewerFrame').src = 'about:blank';
 }
 
 // Init
@@ -674,6 +750,43 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'text/plain; charset=utf-8')
             self.end_headers()
             self.wfile.write(out_html.encode('utf-8'))
+            return
+
+        if path == '/api/3dview':
+            case_name = query.get('case', [''])[0]
+            if not case_name:
+                self.send_response(400)
+                self.end_headers()
+                return
+
+            p_wh   = os.path.join(PUBLIC_CASES_DIR, case_name, 'warehouse.csv')
+            p_obs  = os.path.join(PUBLIC_CASES_DIR, case_name, 'obstacles.csv')
+            p_ceil = os.path.join(PUBLIC_CASES_DIR, case_name, 'ceiling.csv')
+            p_bays = os.path.join(PUBLIC_CASES_DIR, case_name, 'types_of_bays.csv')
+            out_csv = f"output_{case_name.lower()}.csv"
+
+            if not os.path.exists(out_csv):
+                self.send_response(400)
+                self.send_header('Content-type', 'text/plain; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(
+                    f"Solution file {out_csv} not found. Please run Train (Solve) first.".encode('utf-8')
+                )
+                return
+
+            try:
+                world = build_world_response(p_wh, p_obs, p_ceil, p_bays, out_csv)
+                payload = json.dumps(world).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json; charset=utf-8')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(payload)
+            except Exception as exc:
+                self.send_response(500)
+                self.send_header('Content-type', 'text/plain; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(str(exc).encode('utf-8'))
             return
 
         # Fallback to SimpleHTTPRequestHandler for serving static files

@@ -8,7 +8,7 @@ import {
   type PlacedBay,
   type BayTypeConfig,
 } from "@/lib/warehouse-service"
-import { solve } from "@/lib/api"
+import { solve, type WorldResponse } from "@/lib/api"
 import { mapWorldToScene } from "@/lib/world-mapper"
 import { WarehouseScene, type IntroPhase, type ExteriorMode } from "./warehouse-scene"
 import { InfoPanel } from "./components/info-panel"
@@ -119,6 +119,34 @@ export function WarehousePlayground() {
 
   const allUploaded = Object.values(uploads).every(v => v !== null)
 
+  // On mount: if opened via SA dashboard (?preload=CaseN), fetch world data directly
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const preloadCase = params.get("preload")
+    if (!preloadCase) return
+
+    setIsLoading(true)
+    setLoadingMessage("Loading 3D scene…")
+    setError(null)
+
+    fetch(`http://localhost:8000/api/3dview?case=${encodeURIComponent(preloadCase)}`)
+      .then(res => {
+        if (!res.ok) return res.text().then(t => { throw new Error(t) })
+        return res.json() as Promise<WorldResponse>
+      })
+      .then(world => {
+        const { polygon, obstacles, ceilingProfile, placedBays, bayTypes } = mapWorldToScene(world)
+        setParsedData({ polygon, obstacles, ceilingProfile, bayTypes, placedBays })
+        setIntroStartMs(performance.now())
+        setIntroPhase("intro_orbit")
+        setIsLoading(false)
+      })
+      .catch(err => {
+        setError(err instanceof Error ? err.message : "Failed to load scene from SA dashboard")
+        setIsLoading(false)
+      })
+  }, [])
+
   // Send CSVs to backend, run SA solver, return world JSON directly
   useEffect(() => {
     if (!allUploaded) return
@@ -186,6 +214,7 @@ export function WarehousePlayground() {
     setUploads(EMPTY_UPLOADS)
     setSelectedBayId(null)
     setError(null)
+    window.history.replaceState({}, "", "/warehouse")
   }
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
