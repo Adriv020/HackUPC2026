@@ -228,7 +228,19 @@ HTML = """<!DOCTYPE html>
     background: rgba(99, 102, 241, 0.2);
     color: #818cf8;
   }
+  
+  .graph-panel {
+    background: #0a0c14;
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 8px;
+    display: none;
+    flex-direction: column;
+    margin-top: 16px;
+    padding: 16px;
+    height: 350px;
+  }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
@@ -277,9 +289,18 @@ HTML = """<!DOCTYPE html>
     <div class="console-panel">
       <div class="console-header">
         <span id="consoleStatus">Console Output</span>
-        <span id="btnCls" style="cursor: pointer; opacity: 0.7;" onclick="document.getElementById('console').textContent=''">Clear</span>
+        <div style="display: flex; gap: 16px; align-items: center;">
+            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px; color: #a5b4fc;">
+                <input type="checkbox" id="showGraph" checked> Show Optimization Graph
+            </label>
+            <span id="btnCls" style="cursor: pointer; opacity: 0.7;" onclick="document.getElementById('console').textContent=''">Clear</span>
+        </div>
       </div>
       <pre id="console"></pre>
+    </div>
+    
+    <div class="graph-panel" id="graphPanel">
+        <canvas id="saChart"></canvas>
     </div>
   </div>
 </div>
@@ -287,6 +308,67 @@ HTML = """<!DOCTYPE html>
 <script>
 let currentCase = null;
 let eventSource = null;
+let saChart = null;
+let chartLabels = [];
+let chartQData = [];
+let chartBestQData = [];
+let chartTempData = [];
+
+function initChart() {
+    if (saChart) {
+        saChart.destroy();
+    }
+    chartLabels = [];
+    chartQData = [];
+    chartBestQData = [];
+    chartTempData = [];
+    
+    const ctx = document.getElementById('saChart').getContext('2d');
+    saChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: chartLabels,
+            datasets: [
+                {
+                    label: 'Current Q',
+                    data: chartQData,
+                    borderColor: 'rgba(99, 102, 241, 0.5)',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Best Q',
+                    data: chartBestQData,
+                    borderColor: '#10b981',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Temperature',
+                    data: chartTempData,
+                    borderColor: '#ef4444',
+                    borderWidth: 1.5,
+                    borderDash: [5, 5],
+                    pointRadius: 0,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: { title: { display: true, text: 'Iterations / Time' } },
+                y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Q-Score' } },
+                y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Temperature' } }
+            }
+        }
+    });
+}
 
 async function loadCases() {
   try {
@@ -360,6 +442,16 @@ function runSolve() {
   document.getElementById('consoleStatus').textContent = `Running Simulated Annealing on ${currentCase}...`;
   
   const selectedModel = document.getElementById('modelSelect').value;
+  const showGraph = document.getElementById('showGraph').checked;
+  const graphPanel = document.getElementById('graphPanel');
+  
+  if (showGraph) {
+      graphPanel.style.display = 'flex';
+      initChart();
+  } else {
+      graphPanel.style.display = 'none';
+  }
+
   eventSource = new EventSource(`/api/solve?case=${currentCase}&model=${selectedModel}`);
   
   eventSource.onmessage = function(e) {
@@ -368,6 +460,18 @@ function runSolve() {
       eventSource = null;
       resetButtons();
       appendConsole('\\n✓ Process completed.\\n', '#10b981');
+    } else if (e.data.startsWith('[METRIC]')) {
+      if (saChart) {
+          // Format expected: [METRIC] iters,elapsed,T,cur_q,best_q
+          const parts = e.data.substring(8).trim().split(',');
+          if (parts.length >= 5) {
+              chartLabels.push(Math.round(parseFloat(parts[1])) + 's');
+              chartTempData.push(parseFloat(parts[2]));
+              chartQData.push(parseFloat(parts[3]));
+              chartBestQData.push(parseFloat(parts[4]));
+              saChart.update();
+          }
+      }
     } else {
       appendConsole(e.data + '\\n');
     }

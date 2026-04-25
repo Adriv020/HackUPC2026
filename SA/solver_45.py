@@ -664,6 +664,10 @@ def sa(state: State, time_limit: float):
             T = max(0.5, best_q * 0.05)
             no_imp = 0
 
+        # Output telemetry every arbitrary block
+        if iters % 100 == 0:
+            print(f"[METRIC] {iters},{time.time()-start:.3f},{T:.2f},{cur_q:.2f},{best_q:.2f}")
+
     state.restore(best_snap)
     elapsed = time.time() - start
     print(f"  SA: {iters} iters ({iters/max(elapsed,0.001):.0f}/s), best Q={best_q:.2f}", file=sys.stderr)
