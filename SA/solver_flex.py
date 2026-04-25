@@ -54,8 +54,8 @@ def segments_intersect(p1, p2, p3, p4):
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-#TIME_LIMIT = 28.0
-TIME_LIMIT = 180.0
+TIME_LIMIT = 28.0
+#TIME_LIMIT = 60.0
 EPS = 1e-6
 
 # BayType tuple indices
@@ -422,7 +422,7 @@ class State:
         self.active.add(idx)
         self.grid.insert(idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
         self.sum_eff += bt[BT_EFF]
-        self.sum_area += (pb[PB_X2] - pb[PB_X1]) * (pb[PB_Y2] - pb[PB_Y1])
+        self.sum_area += bt[BT_W] * bt[BT_D]
         self.update_candidate_positions()
         return idx
 
@@ -433,7 +433,7 @@ class State:
         self.grid.remove(idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
         self.active.discard(idx)
         self.sum_eff -= bt[BT_EFF]
-        self.sum_area -= (pb[PB_X2] - pb[PB_X1]) * (pb[PB_Y2] - pb[PB_Y1])
+        self.sum_area -= bt[BT_W] * bt[BT_D]
         self.update_candidate_positions()
         return pb
 
@@ -967,7 +967,7 @@ def _undo(state, info, active_list):
             state.grid.insert(b_idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
             bt = state.bay_types[pb[PB_TID]]
             state.sum_eff += bt[BT_EFF]
-            state.sum_area += (pb[PB_X2] - pb[PB_X1]) * (pb[PB_Y2] - pb[PB_Y1])
+            state.sum_area += bt[BT_W] * bt[BT_D]
         state.update_candidate_positions()
         active_list.clear()
         active_list.extend(state.active)

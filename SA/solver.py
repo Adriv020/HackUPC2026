@@ -331,7 +331,7 @@ class State:
         self.active.add(idx)
         self.grid.insert(idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
         self.sum_eff += bt[BT_EFF]
-        self.sum_area += (pb[PB_X2] - pb[PB_X1]) * (pb[PB_Y2] - pb[PB_Y1])
+        self.sum_area += bt[BT_W] * bt[BT_D]
         return idx
 
     def remove(self, idx):
@@ -340,7 +340,7 @@ class State:
         self.grid.remove(idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
         self.active.discard(idx)
         self.sum_eff -= bt[BT_EFF]
-        self.sum_area -= (pb[PB_X2] - pb[PB_X1]) * (pb[PB_Y2] - pb[PB_Y1])
+        self.sum_area -= bt[BT_W] * bt[BT_D]
         return pb
 
     def snapshot(self):
