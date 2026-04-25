@@ -16,17 +16,53 @@ import random
 import time
 from typing import List, Tuple, Set, Dict
 
+def get_obb_corners(x_bl, y_bl, w, h, angle_deg):
+    rad = math.radians(angle_deg)
+    cos_a = math.cos(rad)
+    sin_a = math.sin(rad)
+    return (
+        (x_bl, y_bl),
+        (x_bl + w * cos_a, y_bl + w * sin_a),
+        (x_bl + w * cos_a - h * sin_a, y_bl + w * sin_a + h * cos_a),
+        (x_bl - h * sin_a, y_bl + h * cos_a)
+    )
+
+def aabb_from_corners(c):
+    xs = [p[0] for p in c]
+    ys = [p[1] for p in c]
+    return min(xs), min(ys), max(xs), max(ys)
+
+def sat_overlap(c1, c2):
+    for poly in (c1, c2):
+        for i in range(len(poly)):
+            p1 = poly[i]; p2 = poly[(i + 1) % 4]
+            nx = p2[1] - p1[1]
+            ny = p1[0] - p2[0]
+            m1 = min(p[0]*nx + p[1]*ny for p in c1)
+            M1 = max(p[0]*nx + p[1]*ny for p in c1)
+            m2 = min(p[0]*nx + p[1]*ny for p in c2)
+            M2 = max(p[0]*nx + p[1]*ny for p in c2)
+            if M1 <= m2 + 1e-6 or M2 <= m1 + 1e-6:
+                return False
+    return True
+
+def segments_intersect(p1, p2, p3, p4):
+    def ccw(A, B, C):
+        return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
+    return (ccw(p1, p3, p4) != ccw(p2, p3, p4)) and (ccw(p1, p2, p3) != ccw(p1, p2, p4))
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-TIME_LIMIT = 28.0
+#TIME_LIMIT = 28.0
+TIME_LIMIT = 180.0
 EPS = 1e-6
 
 # BayType tuple indices
 BT_ID = 0; BT_W = 1; BT_D = 2; BT_H = 3; BT_G = 4; BT_NL = 5; BT_PR = 6; BT_TH = 7; BT_EFF = 8
 
 # PlacedBay tuple indices
-PB_TID = 0; PB_X = 1; PB_Y = 2; PB_R = 3; PB_X1 = 4; PB_Y1 = 5; PB_X2 = 6; PB_Y2 = 7
+PB_TID = 0; PB_X = 1; PB_Y = 2; PB_R = 3; PB_X1 = 4; PB_Y1 = 5; PB_X2 = 6; PB_Y2 = 7; PB_CORNERS = 8
 
 
 def make_bay_type(id_, w, d, h, g, nl, pr):
@@ -36,16 +72,14 @@ def make_bay_type(id_, w, d, h, g, nl, pr):
 
 
 def bay_footprint(bt, rotation):
-    w = bt[BT_W]
-    d = bt[BT_D] + bt[BT_G]  # gap on depth side (one end), forklift clearance
-    if rotation == 0 or rotation == 180:
-        return w, d
-    return d, w
-
+    return bt[BT_W], bt[BT_D] + bt[BT_G]
 
 def make_placed_bay(bt, x, y, rotation):
-    w, d = bay_footprint(bt, rotation)
-    return (bt[BT_ID], x, y, rotation, x, y, x + w, y + d)
+    w = bt[BT_W]
+    d = bt[BT_D] + bt[BT_G]
+    corners = get_obb_corners(x, y, w, d, rotation)
+    min_x, min_y, max_x, max_y = aabb_from_corners(corners)
+    return (bt[BT_ID], x, y, rotation, min_x, min_y, max_x, max_y, corners)
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +158,7 @@ def polygon_area(verts):
 # ---------------------------------------------------------------------------
 class Warehouse:
     __slots__ = ('verts', 'area', 'min_x', 'min_y', 'max_x', 'max_y',
-                 'slab_ys', 'slab_intervals')
+                 'slab_ys', 'slab_intervals', 'wall_angles')
 
     def __init__(self, verts):
         self.verts = verts
@@ -132,6 +166,21 @@ class Warehouse:
         xs = [v[0] for v in verts]; ys = [v[1] for v in verts]
         self.min_x = min(xs); self.max_x = max(xs)
         self.min_y = min(ys); self.max_y = max(ys)
+        
+        # Precompute dominant wall angles
+        angles = set()
+        n = len(verts)
+        for i in range(n):
+            j = (i + 1) % n
+            dx = verts[j][0] - verts[i][0]
+            dy = verts[j][1] - verts[i][1]
+            ang = math.degrees(math.atan2(dy, dx)) % 360.0
+            angles.add(ang)
+            angles.add((ang + 90) % 360.0)
+            angles.add((ang + 180) % 360.0)
+            angles.add((ang + 270) % 360.0)
+        self.wall_angles = list(angles)
+
         uys = sorted(set(ys))
         self.slab_ys = uys
         self.slab_intervals = []
@@ -154,24 +203,39 @@ class Warehouse:
         return [(ints[k], ints[k+1]) for k in range(0, len(ints)-1, 2)]
 
     def rect_inside(self, rx1, ry1, rx2, ry2):
-        if rx1 < self.min_x - EPS or rx2 > self.max_x + EPS:
+        pass # Not used for flex, replaced by obb_inside
+
+    def obb_inside(self, corners):
+        min_x, min_y, max_x, max_y = aabb_from_corners(corners)
+        if min_x < self.min_x - EPS or max_x > self.max_x + EPS:
             return False
-        if ry1 < self.min_y - EPS or ry2 > self.max_y + EPS:
+        if min_y < self.min_y - EPS or max_y > self.max_y + EPS:
             return False
             
-        check_ys = [ry1 + EPS, ry2 - EPS]
-        for y in self.slab_ys:
-            if ry1 + EPS < y < ry2 - EPS:
-                check_ys.append(y)
+        def point_in_polygon(px, py):
+            n = len(self.verts)
+            inside = False
+            j = n - 1
+            for i in range(n):
+                xi, yi = self.verts[i]
+                xj, yj = self.verts[j]
+                if ((yi > py) != (yj > py)):
+                    x_int = xi + (py - yi) / (yj - yi) * (xj - xi) if yj != yi else xi
+                    if px < x_int + EPS: inside = not inside
+                j = i
+            return inside
+
+        for cx, cy in corners:
+            if not point_in_polygon(cx, cy): return False
+            
+        # Check edge intersections
+        for i in range(4):
+            p1 = corners[i]; p2 = corners[(i+1)%4]
+            n = len(self.verts)
+            for j in range(n):
+                w1 = self.verts[j]; w2 = self.verts[(j+1)%n]
+                if segments_intersect(p1, p2, w1, w2): return False
                 
-        for y in check_ys:
-            intervals = self._x_intervals(y)
-            ok = False
-            for xlo, xhi in intervals:
-                if rx1 >= xlo - EPS and rx2 <= xhi + EPS:
-                    ok = True; break
-            if not ok:
-                return False
         return True
 
 
@@ -300,27 +364,28 @@ class State:
         return self.sum_eff ** 2 * (self.sum_area / self.wh_area)
 
     def feasible(self, bt, x, y, rot, excl=None):
-        w, d = bay_footprint(bt, rot)
-        x1, y1, x2, y2 = x, y, x + w, y + d
-        if not self.wh.rect_inside(x1, y1, x2, y2):
+        w = bt[BT_W]
+        d = bt[BT_D] + bt[BT_G]
+        corners = get_obb_corners(x, y, w, d, rot)
+        x1, y1, x2, y2 = aabb_from_corners(corners)
+        
+        if not self.wh.obb_inside(corners):
             return False
+            
+        # Check ceiling
         if self.ceiling.min_height(x1, x2) < bt[BT_TH] - EPS:
             return False
+            
         cands = self.grid.query(x1, y1, x2, y2)
         for idx in cands:
             if idx == excl: continue
             if idx < 0:
                 o = self.obs_rects[-(idx+2)]
-                ow = min(x2, o[2]) - max(x1, o[0])
-                oh = min(y2, o[3]) - max(y1, o[1])
-                if ow > EPS and oh > EPS:
-                    return False
+                obs_c = ((o[0],o[1]), (o[2],o[1]), (o[2],o[3]), (o[0],o[3]))
+                if sat_overlap(corners, obs_c): return False
             elif idx in self.active:
                 b = self.bays[idx]
-                ow = min(x2, b[PB_X2]) - max(x1, b[PB_X1])
-                oh = min(y2, b[PB_Y2]) - max(y1, b[PB_Y1])
-                if ow > EPS and oh > EPS:
-                    return False
+                if sat_overlap(corners, b[PB_CORNERS]): return False
         return True
 
     def add(self, bt, x, y, rot):
@@ -371,10 +436,13 @@ def greedy(state: State, time_limit: float):
     max_x, max_y = state.wh.max_x, state.wh.max_y
     total = 0
 
+    test_angles = state.wh.wall_angles if state.wh.wall_angles else [0.0, 90.0]
+    test_angles = list(set(test_angles))[:8]  # Limit to 8 angles to keep greedy fast
+    
     # Pass 1: strip packing with small step
     for bt in sorted_bt:
         if time.time() - start > time_limit * 0.5: break
-        for rot in [0, 90]:
+        for rot in test_angles:
             if time.time() - start > time_limit * 0.5: break
             w, d = bay_footprint(bt, rot)
             if w < 1 or d < 1: continue
@@ -407,7 +475,7 @@ def greedy(state: State, time_limit: float):
 
         for bt in sorted_bt:
             if time.time() - start > time_limit: break
-            for rot in [0, 90]:
+            for rot in test_angles:
                 w, d = bay_footprint(bt, rot)
                 for y in sys_:
                     if time.time() - start > time_limit: break
@@ -503,20 +571,20 @@ def sa(state: State, time_limit: float):
                             break
                     if placed: break
 
-            # Strategy 2: random position
+            # Strategy 2: random position + arbitrary angle
             if not placed:
-                for rot in [0, 90]:
-                    w, d = bay_footprint(bt, rot)
-                    for _ in range(6):
-                        tx = int(wh.min_x + _random() * max(1, wh.max_x - wh.min_x - w))
-                        ty = int(wh.min_y + _random() * max(1, wh.max_y - wh.min_y - d))
-                        if state.feasible(bt, tx, ty, rot):
-                            idx = state.add(bt, tx, ty, rot)
-                            active_list.append(idx)
-                            undo = ('a', idx)
-                            placed = True
-                            break
-                    if placed: break
+                rot = _random() * 360.0 # Any rotation!
+                w = bt[BT_W]; d = bt[BT_D] + bt[BT_G]
+                max_span = max(w, d)
+                for _ in range(8):
+                    tx = wh.min_x + _random() * (wh.max_x - wh.min_x)
+                    ty = wh.min_y + _random() * (wh.max_y - wh.min_y)
+                    if state.feasible(bt, tx, ty, rot):
+                        idx = state.add(bt, tx, ty, rot)
+                        active_list.append(idx)
+                        undo = ('a', idx)
+                        placed = True
+                        break
 
             # Strategy 3: base candidates
             if not placed:
@@ -524,7 +592,9 @@ def sa(state: State, time_limit: float):
                 bys = list(state.base_ys)
                 random.shuffle(bxs)
                 random.shuffle(bys)
-                for rot in [0, 90]:
+                add_test_angles = state.wh.wall_angles if state.wh.wall_angles else [0.0, 90.0, 180.0, 270.0]
+                add_test_angles = list(set(add_test_angles))[:8]
+                for rot in add_test_angles:
                     for x in bxs[:6]:
                         for y in bys[:6]:
                             if state.feasible(bt, x, y, rot):
@@ -565,13 +635,25 @@ def sa(state: State, time_limit: float):
                     ref_idx = active_list[ri] if ri < ai else (active_list[ri + 1] if ri + 1 < n_active else active_list[0])
                     if ref_idx in state.active:
                         ref = state.bays[ref_idx]
-                        for rot in [orot, 0, 90]:
-                            w, d = bay_footprint(bt, rot)
+                        ref_rot = ref[PB_R]
+                        # Inherit neighbor rotation precisely or 90 offset strictly for tight geometric block packing
+                        test_angles = [ref_rot, (ref_rot + 90) % 360.0, (ref_rot + 180) % 360.0, (ref_rot + 270) % 360.0]
+                        for rot in test_angles:
+                            w = bt[BT_W]; d = bt[BT_D] + bt[BT_G]
+                            
+                            # To align properly on edges without arbitrary AABB crushing, 
+                            # we compute actual bounding sizes for the chosen rot
+                            c_new = get_obb_corners(0, 0, w, d, rot)
+                            min_nx, min_ny, max_nx, max_ny = aabb_from_corners(c_new)
+                            span_x = max_nx - min_nx
+                            span_y = max_ny - min_ny
+                            
+                            # Trials aligning the AABBs perfectly (without 1.6mm error)
                             trials = [
                                 (ref[PB_X2], ref[PB_Y1]),
-                                (ref[PB_X1] - w, ref[PB_Y1]),
+                                (ref[PB_X1] - span_x, ref[PB_Y1]),
                                 (ref[PB_X1], ref[PB_Y2]),
-                                (ref[PB_X1], ref[PB_Y1] - d),
+                                (ref[PB_X1], ref[PB_Y1] - span_y),
                             ]
                             for tx, ty in trials:
                                 if state.feasible(bt, tx, ty, rot):
@@ -584,9 +666,20 @@ def sa(state: State, time_limit: float):
 
                 if not moved:
                     for _ in range(8):
-                        rot = orot if _random() < 0.6 else (90 if orot == 0 else 0)
-                        dx = int((_random() - 0.5) * 2000)
-                        dy = int((_random() - 0.5) * 2000)
+                        rand_val = _random()
+                        if rand_val < 0.3 and state.wh.wall_angles:
+                            # Strict pull to boundary constants
+                            rot = state.wh.wall_angles[int(_random() * len(state.wh.wall_angles))]
+                        elif rand_val < 0.6:
+                            rot = orot + (_random() - 0.5) * 45.0  # Nudge rotation mathematically
+                        else:
+                            rot = _random() * 360.0  # Global scan
+                            
+                        # Quantize strictness bounding to 3-degree angular increments
+                        rot = round(rot / 3.0) * 3.0 % 360.0
+                        # Nudge position
+                        dx = (_random() - 0.5) * 1000
+                        dy = (_random() - 0.5) * 1000
                         tx, ty = ox + dx, oy + dy
                         if state.feasible(bt, tx, ty, rot):
                             new_idx = state.add(bt, tx, ty, rot)
@@ -613,7 +706,9 @@ def sa(state: State, time_limit: float):
                     new_bt = bay_types[new_tid]
                     state.remove(idx)
                     swapped = False
-                    for rot in [orot, 0, 90, 180, 270]:
+                    new_test_angles = state.wh.wall_angles if state.wh.wall_angles else [0.0, 90.0, 180.0, 270.0]
+                    new_test_angles = list(set([orot] + new_test_angles))[:8]
+                    for rot in new_test_angles:
                         if state.feasible(new_bt, ox, oy, rot):
                             new_idx = state.add(new_bt, ox, oy, rot)
                             active_list[ai] = new_idx
@@ -696,22 +791,20 @@ def validate(state):
     for i, (idx_i, bi) in enumerate(bays_list):
         bt = state.bay_types[bi[PB_TID]]
         x1, y1, x2, y2 = bi[PB_X1], bi[PB_Y1], bi[PB_X2], bi[PB_Y2]
-        if not state.wh.rect_inside(x1, y1, x2, y2):
+        corners_i = bi[PB_CORNERS]
+        if not state.wh.obb_inside(corners_i):
             print(f"  FAIL: bay {idx_i} outside warehouse", file=sys.stderr); ok = False
         if state.ceiling.min_height(x1, x2) < bt[BT_TH] - EPS:
             print(f"  FAIL: bay {idx_i} exceeds ceiling", file=sys.stderr); ok = False
-        for oi, (ox1, oy1, ox2, oy2) in enumerate(state.obs_rects):
-            ow = min(x2, ox2) - max(x1, ox1)
-            oh = min(y2, oy2) - max(y1, oy1)
-            if ow > EPS and oh > EPS:
-                print(f"  FAIL: bay {idx_i} overlaps obstacle {oi} ({ow:.1f}x{oh:.1f})", file=sys.stderr)
+        for oi, o in enumerate(state.obs_rects):
+            obs_c = ((o[0],o[1]), (o[2],o[1]), (o[2],o[3]), (o[0],o[3]))
+            if sat_overlap(corners_i, obs_c):
+                print(f"  FAIL: bay {idx_i} overlaps obstacle {oi}", file=sys.stderr)
                 ok = False
         for j, (idx_j, bj) in enumerate(bays_list):
             if j <= i: continue
-            ow = min(bi[PB_X2], bj[PB_X2]) - max(bi[PB_X1], bj[PB_X1])
-            oh = min(bi[PB_Y2], bj[PB_Y2]) - max(bi[PB_Y1], bj[PB_Y1])
-            if ow > EPS and oh > EPS:
-                print(f"  FAIL: bay {idx_i} overlaps bay {idx_j} ({ow:.1f}x{oh:.1f})", file=sys.stderr)
+            if sat_overlap(corners_i, bj[PB_CORNERS]):
+                print(f"  FAIL: bay {idx_i} overlaps bay {idx_j}", file=sys.stderr)
                 ok = False
     if ok:
         print(f"  Validation OK ({len(bays_list)} bays)", file=sys.stderr)
@@ -726,26 +819,10 @@ def write_output(state, path):
         f.write("Id, X, Y, Rotation\n")
         for idx in sorted(state.active):
             b = state.bays[idx]
-            bt = state.bay_types[b[PB_TID]]
-            w = bt[BT_W]
-            d = bt[BT_D] + bt[BT_G]
-            
-            x_out = b[PB_X]
-            y_out = b[PB_Y]
-            rot = b[PB_R]
-            
-            # Map top-left aligned orthogonal representations to exact OBB mathematical pivoting
-            if rot == 90:
-                x_out += d
-            elif rot == 180:
-                x_out += w
-                y_out += d
-            elif rot == 270:
-                y_out += w
-                
-            x_out = int(x_out) if x_out == int(x_out) else x_out
-            y_out = int(y_out) if y_out == int(y_out) else y_out
-            f.write(f"{b[PB_TID]}, {x_out}, {y_out}, {rot}\n")
+            # Output clean numeric values
+            x_out = int(b[PB_X]) if b[PB_X] == int(b[PB_X]) else b[PB_X]
+            y_out = int(b[PB_Y]) if b[PB_Y] == int(b[PB_Y]) else b[PB_Y]
+            f.write(f"{b[PB_TID]}, {x_out}, {y_out}, {b[PB_R]}\n")
 
 
 # ---------------------------------------------------------------------------

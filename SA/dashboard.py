@@ -247,9 +247,18 @@ HTML = """<!DOCTYPE html>
   
   <div class="content">
     <div style="display: flex; justify-content: space-between; align-items: flex-end;">
-      <div>
-        <h2 id="currentCaseName" style="color: #e0e0e0; margin-bottom: 6px;">Select a Case</h2>
-        <div style="font-size: 13px; color: #9ca3af;">Manage training, validation, and visualization</div>
+      <div style="display: flex; gap: 24px;">
+        <div>
+          <h2 id="currentCaseName" style="color: #e0e0e0; margin-bottom: 6px;">Select a Case</h2>
+          <div style="font-size: 13px; color: #9ca3af;">Manage training, validation, and visualization</div>
+        </div>
+        <div style="display: flex; flex-direction: column; justify-content: flex-end;">
+          <label for="modelSelect" style="font-size: 12px; color: #9ca3af; margin-bottom: 4px;">Solver Engine:</label>
+          <select id="modelSelect" style="background: #13151f; color: #e0e0e0; border: 1px solid rgba(99, 102, 241, 0.3); padding: 6px 10px; border-radius: 4px; outline: none; font-family: inherit; font-size: 13px; cursor: pointer;">
+            <option value="solver.py">Orthogonal (solver.py)</option>
+            <option value="solver_flex.py">Continuous SAT (solver_flex.py)</option>
+          </select>
+        </div>
       </div>
       <div class="actions">
         <button class="btn btn-solve" id="btnSolve" disabled onclick="runSolve()">
@@ -349,7 +358,8 @@ function runSolve() {
   document.getElementById('btnVisualize').disabled = true;
   document.getElementById('consoleStatus').textContent = `Running Simulated Annealing on ${currentCase}...`;
   
-  eventSource = new EventSource(`/api/solve?case=${currentCase}`);
+  const selectedModel = document.getElementById('modelSelect').value;
+  eventSource = new EventSource(`/api/solve?case=${currentCase}&model=${selectedModel}`);
   
   eventSource.onmessage = function(e) {
     if (e.data === 'DONE') {
@@ -451,6 +461,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         if path == '/api/solve':
             case_name = query.get('case', [''])[0]
+            model_name = query.get('model', ['solver.py'])[0]
+            if model_name not in ['solver.py', 'solver_flex.py']:
+                model_name = 'solver.py'
             if not case_name:
                 self.send_response(400)
                 self.end_headers()
@@ -469,7 +482,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             out_csv = f"output_{case_name.lower()}.csv"
 
             # Use unbuffered output (-u) for real-time streaming
-            cmd = ["python3", "-u", "solver.py", p_wh, p_obs, p_ceil, p_bays, out_csv]
+            cmd = ["python3", "-u", model_name, p_wh, p_obs, p_ceil, p_bays, out_csv]
             
             try:
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)

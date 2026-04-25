@@ -38,6 +38,32 @@ def polygon_area(verts):
         a += verts[i][0] * verts[j][1] - verts[j][0] * verts[i][1]
     return abs(a) * 0.5
 
+def get_obb_corners(x_bl, y_bl, w, h, angle_deg):
+    import math
+    rad = math.radians(angle_deg)
+    cos_a = math.cos(rad)
+    sin_a = math.sin(rad)
+    return [
+        [x_bl, y_bl],
+        [x_bl + w * cos_a, y_bl + w * sin_a],
+        [x_bl + w * cos_a - h * sin_a, y_bl + w * sin_a + h * cos_a],
+        [x_bl - h * sin_a, y_bl + h * cos_a]
+    ]
+
+def get_gap_corners(x_bl, y_bl, w, d, g, angle_deg):
+    import math
+    rad = math.radians(angle_deg)
+    cos_a = math.cos(rad)
+    sin_a = math.sin(rad)
+    px = x_bl - d * sin_a
+    py = y_bl + d * cos_a
+    return [
+        [px, py],
+        [px + w * cos_a, py + w * sin_a],
+        [px + w * cos_a - g * sin_a, py + w * sin_a + g * cos_a],
+        [px - g * sin_a, py + g * cos_a]
+    ]
+
 
 def ceiling_at(ceil_data, x):
     """Step function: find last breakpoint <= x, return its height."""
@@ -91,32 +117,27 @@ def main():
     for row in out_data:
         tid = int(row[0])
         x, y = row[1], row[2]
-        rot = int(row[3])
+        rot = float(row[3])
         bt = bay_types[tid]
         w_orig, d_orig, g = bt["width"], bt["depth"], bt["gap"]
 
-        # Body dimensions (no gap)
-        if rot == 0 or rot == 180:
-            bw, bd = w_orig, d_orig
-        else:
-            bw, bd = d_orig, w_orig
+        corners = get_obb_corners(x, y, w_orig, d_orig, rot)
+        gap_corners = get_gap_corners(x, y, w_orig, d_orig, g, rot)
+        
+        # Calculate full AABB for area and ceiling check mapping
+        xs = [p[0] for p in corners] + [p[0] for p in gap_corners]
+        ys = [p[1] for p in corners] + [p[1] for p in gap_corners]
+        x1, x2 = min(xs), max(xs)
+        y1, y2 = min(ys), max(ys)
 
-        # Gap zone: one strip on the depth side (one end), forklift clearance
-        if rot == 0 or rot == 180:
-            gx1, gy1, gx2, gy2 = x, y + bd, x + bw, y + bd + g   # top strip
-        else:
-            gx1, gy1, gx2, gy2 = x + bw, y, x + bw + g, y + bd   # right strip
-
-        # Full footprint x-span for ceiling check (gap in y for rot=0, in x for rot=90)
-        fx2 = x + bw if (rot == 0 or rot == 180) else x + bw + g
-        ch = min_ceiling(ceil_data, x, fx2)
+        ch = min_ceiling(ceil_data, x1, x2)
         margin = ch - bt["height"]
         placed.append({
             "typeId": tid, "x": x, "y": y, "rotation": rot,
-            "x1": x, "y1": y, "x2": x + bw, "y2": y + bd,
-            "gx1": gx1, "gy1": gy1, "gx2": gx2, "gy2": gy2,
+            "corners": corners,
+            "gap_corners": gap_corners,
+            "x1": x1, "y1": y1, "x2": x2, "y2": y2,
             "width": w_orig, "depth": d_orig, "gap": g,
-            "w": bw, "d": bd,
             "efficiency": bt["efficiency"],
             "nLoads": bt["nLoads"], "price": bt["price"],
             "height": bt["height"],
@@ -126,8 +147,7 @@ def main():
 
     wh_area = polygon_area(wh_data)
     sum_eff = sum(b["efficiency"] for b in placed)
-    sum_area = sum((b["x2"] - b["x1"]) * (b["y2"] - b["y1"]) +
-                   (b["gx2"] - b["gx1"]) * (b["gy2"] - b["gy1"]) for b in placed)
+    sum_area = sum(b["width"] * (b["depth"] + b["gap"]) for b in placed)
     quality = (sum_eff ** 2) * (sum_area / wh_area) if wh_area > 0 else 0
 
     data = {
@@ -557,64 +577,87 @@ function drawObstacles() {{
 function drawBays(showLabels, showDims, showMargin) {{
   for (let i=0; i<DATA.placed.length; i++) {{
     const b = DATA.placed[i];
-    const[sx1,sy1]=worldToScreen(b.x1,b.y2);
-    const[sx2,sy2]=worldToScreen(b.x2,b.y1);
-    const sw=sx2-sx1, sh=sy2-sy1;
     const color = typeColor(b.typeId);
     const isHov = i===hoveredBay;
 
-    // Gap danger zone (yellow strip on the long side)
-    const[gsx1,gsy1]=worldToScreen(b.gx1, b.gy2);
-    const[gsx2,gsy2]=worldToScreen(b.gx2, b.gy1);
+    // Floor width x depth calculation for labels
+    const [sx1, sy1]=worldToScreen(b.x1, b.y2);
+    const [sx2, sy2]=worldToScreen(b.x2, b.y1);
+    const sw=sx2-sx1, sh=sy2-sy1;
+
+    // Gap danger zone 
     ctx.fillStyle = isHov ? 'rgba(251,191,36,0.28)' : 'rgba(251,191,36,0.12)';
-    ctx.fillRect(gsx1, gsy1, gsx2-gsx1, gsy2-gsy1);
     ctx.strokeStyle = 'rgba(251,191,36,0.45)';
     ctx.lineWidth = 0.5;
     ctx.setLineDash([3,3]);
-    ctx.strokeRect(gsx1, gsy1, gsx2-gsx1, gsy2-gsy1);
+    ctx.beginPath();
+    let [gsx, gsy] = worldToScreen(b.gap_corners[0][0], b.gap_corners[0][1]);
+    ctx.moveTo(gsx, gsy);
+    for (let j = 1; j < 4; j++) {{
+      let [nx, ny] = worldToScreen(b.gap_corners[j][0], b.gap_corners[j][1]);
+      ctx.lineTo(nx, ny);
+    }}
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
     ctx.setLineDash([]);
 
-    // Fill
+    // Fill Bay Body
     ctx.fillStyle = color + hexAlpha(isHov?0.45:0.2);
-    ctx.fillRect(sx1,sy1,sw,sh);
+    ctx.beginPath();
+    let [px, py] = worldToScreen(b.corners[0][0], b.corners[0][1]);
+    ctx.moveTo(px, py);
+    for (let j = 1; j < 4; j++) {{
+      let [nx, ny] = worldToScreen(b.corners[j][0], b.corners[j][1]);
+      ctx.lineTo(nx, ny);
+    }}
+    ctx.closePath();
+    ctx.fill();
 
     // Border
     ctx.strokeStyle = isHov ? color : color+'aa';
     ctx.lineWidth = isHov ? 2.5 : 1;
-    ctx.strokeRect(sx1,sy1,sw,sh);
-    if (isHov) {{ ctx.shadowColor=color; ctx.shadowBlur=12; ctx.strokeRect(sx1,sy1,sw,sh); ctx.shadowBlur=0; }}
+    if (isHov) {{ ctx.shadowColor=color; ctx.shadowBlur=12; ctx.stroke(); ctx.shadowBlur=0; }}
+    ctx.stroke();
 
-    // Ceiling margin indicator (top edge colored bar)
+    // Ceiling margin indicator
     if (showMargin && sw > 6 && sh > 6) {{
       const mc = marginColor(b.ceilingMargin, b.height);
       ctx.fillStyle = mc;
       const barH = Math.max(2, Math.min(4, sh * 0.08));
-      ctx.fillRect(sx1+1, sy1+1, sw-2, barH);
+      ctx.fillRect(sx1+1, Math.min(sy1, sy2)+1, sw-2, barH);
     }}
 
-    // Labels
-    if (sw>18 && sh>14) {{
+    // Labels context setup via transform
+    if (sw > 18 && sh > 14) {{
       const fs = Math.min(12, Math.max(8, Math.min(sw,sh)*0.3));
+      ctx.save();
       ctx.font=`${{fs}}px Inter,sans-serif`;
       ctx.textAlign='center'; ctx.textBaseline='middle';
+      
+      const cx_world = (b.corners[0][0] + b.corners[2][0]) / 2;
+      const cy_world = (b.corners[0][1] + b.corners[2][1]) / 2;
+      let [scx, scy] = worldToScreen(cx_world, cy_world);
+      
+      ctx.translate(scx, scy);
+      ctx.rotate(-b.rotation * Math.PI / 180);
 
       if (showLabels) {{
         ctx.fillStyle = isHov ? '#fff' : color+'dd';
-        ctx.fillText(`T${{b.typeId}}`, sx1+sw/2, sy1+sh/2);
+        ctx.fillText(`T${{b.typeId}}`, 0, 0);
       }}
       if (showDims && sw>45 && sh>30) {{
         ctx.font=`${{Math.max(7,fs-2)}}px Inter,sans-serif`;
         ctx.fillStyle=color+'88';
-        ctx.fillText(`${{b.w}}×${{b.d}}`, sx1+sw/2, sy1+sh/2+fs*0.75);
+        ctx.fillText(`${{b.width}}×${{b.depth}}`, 0, fs*0.75);
       }}
-      // Show ceiling margin on hover
       if (isHov && sw > 30 && sh > 25) {{
         ctx.font=`${{Math.max(7,fs-2)}}px Inter,sans-serif`;
         const mc = marginColor(b.ceilingMargin, b.height);
         ctx.fillStyle = mc;
-        ctx.fillText(`↕${{b.ceilingMargin.toFixed(0)}}`, sx1+sw/2, sy1+sh/2+fs*1.5);
+        ctx.fillText(`↕${{b.ceilingMargin.toFixed(0)}}`, 0, fs*1.5);
       }}
-      ctx.textBaseline='alphabetic';
+      ctx.restore();
     }}
   }}
 }}
