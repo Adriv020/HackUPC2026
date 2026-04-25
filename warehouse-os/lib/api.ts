@@ -1,8 +1,8 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 export type WorldResponse = {
-  scenarioId: string
-  projectId: string
+  scenarioId?: string
+  projectId?: string
   warehouse: {
     perimeter: Array<{ x: number; y: number }>
     boundingBox: { minX: number; minY: number; maxX: number; maxY: number }
@@ -73,5 +73,21 @@ export async function pollScenarioStatus(
 export async function fetchWorld(scenarioId: string): Promise<WorldResponse> {
   const res = await fetch(`${API_URL}/scenarios/${scenarioId}/world`)
   if (!res.ok) throw new Error("Failed to fetch world data")
+  return res.json() as Promise<WorldResponse>
+}
+
+export async function solve(uploads: {
+  warehouse: string
+  obstacles: string
+  ceiling: string
+  bays: string
+}): Promise<WorldResponse> {
+  const form = new FormData()
+  form.append("warehouse", new Blob([uploads.warehouse], { type: "text/csv" }), "warehouse.csv")
+  form.append("obstacles", new Blob([uploads.obstacles ?? ""], { type: "text/csv" }), "obstacles.csv")
+  form.append("ceiling", new Blob([uploads.ceiling], { type: "text/csv" }), "ceiling.csv")
+  form.append("types_of_bays", new Blob([uploads.bays], { type: "text/csv" }), "types_of_bays.csv")
+  const res = await fetch(`${API_URL}/solve`, { method: "POST", body: form })
+  if (!res.ok) throw new Error(`Solver failed: ${await res.text()}`)
   return res.json() as Promise<WorldResponse>
 }

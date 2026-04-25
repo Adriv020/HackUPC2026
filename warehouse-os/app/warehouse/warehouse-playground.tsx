@@ -8,7 +8,7 @@ import {
   type PlacedBay,
   type BayTypeConfig,
 } from "@/lib/warehouse-service"
-import { uploadProject, createScenario, pollScenarioStatus, fetchWorld } from "@/lib/api"
+import { solve } from "@/lib/api"
 import { mapWorldToScene } from "@/lib/world-mapper"
 import { WarehouseScene, type IntroPhase, type ExteriorMode } from "./warehouse-scene"
 import { InfoPanel } from "./components/info-panel"
@@ -115,7 +115,7 @@ export function WarehousePlayground() {
 
   const allUploaded = Object.values(uploads).every(v => v !== null)
 
-  // Send CSVs to backend, run SA solver, fetch results from MongoDB
+  // Send CSVs to backend, run SA solver, return world JSON directly
   useEffect(() => {
     if (!allUploaded) return
     let cancelled = false
@@ -124,24 +124,12 @@ export function WarehousePlayground() {
 
     async function run() {
       try {
-        setLoadingMessage("Uploading files to backend…")
-        const projectId = await uploadProject(uploads as Required<UploadState>)
-        if (cancelled) return
-
-        setLoadingMessage("Starting optimization…")
-        const scenarioId = await createScenario(projectId)
-        if (cancelled) return
-
-        setLoadingMessage("Solver running — this takes ~3 min…")
-        await pollScenarioStatus(scenarioId)
-        if (cancelled) return
-
-        setLoadingMessage("Loading results from MongoDB…")
-        const world = await fetchWorld(scenarioId)
+        setLoadingMessage("Running solver (~30 s)…")
+        const world = await solve(uploads as Required<UploadState>)
         if (cancelled) return
 
         const { polygon, obstacles, ceilingProfile, placedBays, bayTypes } = mapWorldToScene(world)
-        console.log(`[WarehouseOS] ${placedBays.length} bays loaded from MongoDB`)
+        console.log(`[WarehouseOS] ${placedBays.length} bays placed`)
 
         setParsedData({ polygon, obstacles, ceilingProfile, bayTypes, placedBays })
         setIntroStartMs(performance.now())
