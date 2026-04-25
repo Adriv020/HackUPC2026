@@ -41,12 +41,12 @@ export type WarehouseBounds = {
 
 export type BayTypeConfig = {
   typeId: string
-  width: number  // Three.js units (mm / 100)
+  width: number  // Three.js units (mm / 1000)
   depth: number  // Three.js units
-  height: number // Three.js units (capped to ceiling - 0.3 at placement time)
-  col4: string   // TODO: pending column definition — appears to be a load category label
-  count: number  // number of bays of this type to place
-  col6: string   // TODO: pending column definition — appears to be a priority/tier number
+  height: number // Three.js units
+  gap: number    // Three.js units (mm / 1000)
+  nLoads: number // number of boxes this bay can hold
+  price: number  // cost of this bay
 }
 
 export type PlacedBay = {
@@ -141,30 +141,31 @@ export function parseBaysCSV(csv: string): BayTypeConfig[] {
   const result: BayTypeConfig[] = []
 
   console.group('[WarehouseOS] types_of_bays.csv parsed')
-  console.log('Columns: type_id | width_mm | depth_mm | height_mm | col4 | count | col6')
+  console.log('Columns: Id | width | depth | height | gap | nLoads | price')
 
   for (const parts of rows) {
     if (parts.length < 7) continue
-    const [typeId, widthStr, depthStr, heightStr, col4, countStr, col6] = parts
+    const [typeId, widthStr, depthStr, heightStr, gapStr, nLoadsStr, priceStr] = parts
     const width  = parseFloat(widthStr)
     const depth  = parseFloat(depthStr)
     const height = parseFloat(heightStr)
-    const count  = parseInt(countStr, 10)
-    if (isNaN(width) || isNaN(depth) || isNaN(height) || isNaN(count)) continue
+    const gap    = parseFloat(gapStr)
+    const nLoads = parseInt(nLoadsStr, 10)
+    const price  = parseFloat(priceStr)
+    
+    if (isNaN(width) || isNaN(depth) || isNaN(height) || isNaN(nLoads)) continue
 
     const config: BayTypeConfig = {
       typeId,
       width:  width  * SCALE,
       depth:  depth  * SCALE,
       height: height * SCALE,
-      col4,
-      count,
-      col6,
-      // TODO: col4 appears to be a load/weight category label (e.g. "heavy", "medium", "light")
-      // TODO: col6 appears to be a priority/tier number (e.g. 1, 2, 3)
+      gap:    gap    * SCALE,
+      nLoads,
+      price:  isNaN(price) ? 0 : price,
     }
     result.push(config)
-    console.log(`  ${typeId}: ${width}×${depth}×${height}mm, count=${count}, col4="${col4}", col6="${col6}"`)
+    console.log(`  ${typeId}: ${width}×${depth}×${height}mm, gap=${gap}, nLoads=${nLoads}, price=${price}`)
   }
 
   console.groupEnd()
@@ -330,18 +331,18 @@ export function placeBays(
   const placed: PlacedBay[] = []
   let bayCounter = 0
 
-  // Sort bay types tallest first
-  const sortedTypes = [...bayTypes].sort((a, b) => b.height - a.height)
+  // Sort bay types by capacity (highest nLoads first)
+  const sortedTypes = [...bayTypes].sort((a, b) => b.nLoads - a.nLoads)
 
   for (const bayType of sortedTypes) {
     let placedCount = 0
     let rowZ = startZ
+    const actualGap = Math.max(0.1, bayType.gap)
 
-    rowLoop: while (placedCount < bayType.count && rowZ + bayType.depth <= endZ + 0.01) {
+    rowLoop: while (rowZ + bayType.depth <= endZ + 0.01) {
       let colX = startX
 
       while (colX + bayType.width <= endX + 0.01) {
-        if (placedCount >= bayType.count) break rowLoop
 
         // The bay footprint in XZ: [colX, rowZ] to [colX+w, rowZ+d]
         const footprintCorners: Point2D[] = [
@@ -372,13 +373,13 @@ export function placeBays(
           placedCount++
         }
 
-        colX += bayType.width + BAY_GAP
+        colX += bayType.width + actualGap
       }
 
       rowZ += bayType.depth + AISLE_GAP
     }
 
-    console.log(`[WarehouseOS] Bay type ${bayType.typeId}: placed ${placedCount}/${bayType.count}`)
+    console.log(`[WarehouseOS] Bay type ${bayType.typeId}: placed ${placedCount}`)
   }
 
   return placed

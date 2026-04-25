@@ -55,9 +55,9 @@ export function mapWorldToScene(world: WorldResponse): {
         width: footW * SCALE,
         depth: footD * SCALE,
         height: height * SCALE,
-        col4: String(bay.nLoads),
-        count: 1,
-        col6: String(bay.price),
+        gap: 0,
+        nLoads: bay.nLoads,
+        price: bay.price,
       }
 
       return {
@@ -74,7 +74,7 @@ export function mapWorldToScene(world: WorldResponse): {
 
   // Synthetic entry so the "X / Y bays placed" chip shows the correct total
   const bayTypes: BayTypeConfig[] = [
-    { typeId: "all", width: 0, depth: 0, height: 0, col4: "", count: world.summary.totalBays, col6: "" },
+    { typeId: "all", width: 0, depth: 0, height: 0, gap: 0, nLoads: 0, price: 0 },
   ]
 
   return { polygon, obstacles, ceilingProfile, placedBays, bayTypes }

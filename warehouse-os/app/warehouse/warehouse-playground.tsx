@@ -99,6 +99,8 @@ function UploadCard({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+export type ViewMode = "3d" | "floor_plan"
+
 export function WarehousePlayground() {
   const [uploads, setUploads] = useState<UploadState>(EMPTY_UPLOADS)
   const [parsedData, setParsedData] = useState<ParsedData | null>(null)
@@ -112,6 +114,7 @@ export function WarehousePlayground() {
   // New state for exterior visibility control
   const [exteriorMode, setExteriorMode] = useState<ExteriorMode>("auto")
   const [isExteriorMenuOpen, setIsExteriorMenuOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>("3d")
 
   const allUploaded = Object.values(uploads).every(v => v !== null)
 
@@ -125,7 +128,7 @@ export function WarehousePlayground() {
     async function run() {
       try {
         setLoadingMessage("Running solver (~30 s)…")
-        const world = await solve(uploads as Required<UploadState>)
+        const world = await solve(uploads as { warehouse: string; obstacles: string; ceiling: string; bays: string; })
         if (cancelled) return
 
         const { polygon, obstacles, ceilingProfile, placedBays, bayTypes } = mapWorldToScene(world)
@@ -195,7 +198,7 @@ export function WarehousePlayground() {
     return (
       <div
         className="relative h-svh w-full overflow-hidden"
-        style={{ background: "linear-gradient(to bottom, #76d0f5 0%, #f4f8fa 100%)" }}
+        style={{ background: viewMode === "3d" ? "linear-gradient(to bottom, #76d0f5 0%, #f4f8fa 100%)" : "#f8fafc" }}
       >
         {/* R3F canvas fills the screen */}
         <div className="absolute inset-0">
@@ -211,6 +214,7 @@ export function WarehousePlayground() {
             onSelectBay={handleSelectBay}
             onClearSelection={handleClearSelection}
             exteriorMode={exteriorMode}
+            viewMode={viewMode}
           />
         </div>
 
@@ -249,12 +253,27 @@ export function WarehousePlayground() {
               color: "#3b82f6",
             }}
           >
-            {parsedData.placedBays.length} / {parsedData.bayTypes.reduce((s, t) => s + t.count, 0)} bays placed
+            {parsedData.placedBays.length} bays placed
           </div>
         </div>
 
+        {/* ── View Mode Controls ────────────────────────────────────────────── */}
+        <div className="pointer-events-auto absolute top-24 right-4 z-20 flex flex-col items-end gap-2">
+          <button
+            onClick={() => setViewMode(v => v === "3d" ? "floor_plan" : "3d")}
+            className="rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
+            style={{
+              borderColor: "rgba(15,23,42,0.15)",
+              background: "rgba(255,255,255,0.6)",
+              color: "rgba(15,23,42,0.8)",
+            }}
+          >
+            {viewMode === "3d" ? "🔲 Top View" : "🧊 3D View"}
+          </button>
+        </div>
+
         {/* ── Exterior Controls ────────────────────────────────────────────── */}
-        <div className="pointer-events-auto absolute top-24 right-4 z-20 flex flex-col items-end">
+        <div className="pointer-events-auto absolute top-[140px] right-4 z-20 flex flex-col items-end">
           <button
             onClick={() => setIsExteriorMenuOpen(prev => !prev)}
             className="rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
