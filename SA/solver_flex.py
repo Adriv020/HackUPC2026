@@ -964,7 +964,7 @@ def sa(state: State, time_limit: float):
     state.restore(best_snap)
     elapsed = time.time() - start
     print(f"  SA: {iters} iters ({iters/max(elapsed,0.001):.0f}/s), best Q={best_q:.2f}", file=sys.stderr)
-    return best_q
+    return best_q, iters
 
 
 def _undo(state, info, active_list):
@@ -1077,9 +1077,10 @@ def main():
 
     # Phase 2: SA
     remaining = TIME_LIMIT - (time.time() - t0)
+    sa_iters = 0
     if remaining > 6.0:
         print(f"Phase 2: SA ({remaining - 5.0:.1f}s)...", file=sys.stderr)
-        sa(state, remaining - 5.0)
+        _, sa_iters = sa(state, remaining - 5.0)
 
     # Phase 3: Post-processing Shrink & Shift
     print(f"Phase 3: Post-processing...", file=sys.stderr)
@@ -1091,7 +1092,7 @@ def main():
     print(f"Final: {len(state.active)} bays, Q={q_final:.2f}, time={time.time()-t0:.1f}s", file=sys.stderr)
     
     # 3. Broadcast the absolute final score so the dashboard doesn't log a lie
-    print(f"[METRIC] FINAL,{time.time()-t0:.3f},0.0,{q_final:.2f},{q_final:.2f}")
+    print(f"[METRIC] {sa_iters},{time.time()-t0:.3f},0.0,{q_final:.2f},{q_final:.2f}")
     
     write_output(state, out_path)
 

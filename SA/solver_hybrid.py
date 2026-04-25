@@ -7,24 +7,30 @@ import os
 import shutil
 
 global_best_q = float('inf')
+global_last_temp = 0.0
+global_last_cur_q = float('inf')
 global_start_time = time.time()
 metrics_lock = threading.Lock()
 
 def monitor_process(proc, name, out_csv_tmp, result_dict):
-    global global_best_q
+    global global_best_q, global_last_temp, global_last_cur_q
     best_q_local = float('inf')
     
     for line in proc.stdout:
         line = line.strip()
         if line.startswith("[METRIC]"):
             parts = line[8:].split(',')
-            if len(parts) >= 5:
+            if len(parts) >= 5 and parts[0] != 'FINAL':
                 try:
-                    q = float(parts[4])
+                    temp  = float(parts[2])
+                    cur_q = float(parts[3])
+                    q     = float(parts[4])
                     best_q_local = min(best_q_local, q)
                     with metrics_lock:
                         if q < global_best_q:
                             global_best_q = q
+                        global_last_temp  = temp
+                        global_last_cur_q = cur_q
                 except ValueError:
                     pass
         else:
@@ -73,8 +79,10 @@ def main():
         time.sleep(0.1)
         iters += 10
         with metrics_lock:
-            q_to_report = global_best_q if global_best_q != float('inf') else 0.0
-            print(f"[METRIC] {iters},{time.time() - global_start_time:.3f},1.0,{q_to_report:.2f},{q_to_report:.2f}", flush=True)
+            q_to_report    = global_best_q   if global_best_q   != float('inf') else 0.0
+            cur_q_to_report = global_last_cur_q if global_last_cur_q != float('inf') else q_to_report
+            temp_to_report = global_last_temp
+            print(f"[METRIC] {iters},{time.time() - global_start_time:.3f},{temp_to_report:.2f},{cur_q_to_report:.2f},{q_to_report:.2f}", flush=True)
 
     for t in threads:
         t.join()

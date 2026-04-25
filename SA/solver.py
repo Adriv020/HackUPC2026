@@ -674,7 +674,7 @@ def sa(state: State, time_limit: float):
     state.restore(best_snap)
     elapsed = time.time() - start
     print(f"  SA: {iters} iters ({iters/max(elapsed,0.001):.0f}/s), best Q={best_q:.2f}", file=sys.stderr)
-    return best_q
+    return best_q, iters
 
 
 def _undo(state, info, active_list):
@@ -791,14 +791,16 @@ def main():
 
     # Phase 2: SA
     remaining = TIME_LIMIT - (time.time() - t0)
+    sa_iters = 0
     if remaining > 2.0:
         print(f"Phase 2: SA ({remaining:.1f}s)...", file=sys.stderr)
-        sa(state, remaining)
+        _, sa_iters = sa(state, remaining)
 
     # Validate & output
     validate(state)
     q_final = state.quality()
     print(f"Final: {len(state.active)} bays, Q={q_final:.2f}, time={time.time()-t0:.1f}s", file=sys.stderr)
+    print(f"[METRIC] {sa_iters},{time.time()-t0:.3f},0.0,{q_final:.2f},{q_final:.2f}")
     write_output(state, out_path)
 
 

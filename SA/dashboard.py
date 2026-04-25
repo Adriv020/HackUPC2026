@@ -467,11 +467,18 @@ function runSolve() {
           // Format expected: [METRIC] iters,elapsed,T,cur_q,best_q
           const parts = e.data.substring(8).trim().split(',');
           if (parts.length >= 5) {
-              chartLabels.push(Math.round(parseFloat(parts[1])) + 's');
-              chartTempData.push(parseFloat(parts[2]));
-              chartQData.push(parseFloat(parts[3]));
-              chartBestQData.push(parseFloat(parts[4]));
-              saChart.update();
+              const elapsed = parseFloat(parts[1]);
+              const temp    = parseFloat(parts[2]);
+              const curQ    = parseFloat(parts[3]);
+              const bestQ   = parseFloat(parts[4]);
+              // Guard: skip any point with NaN fields (e.g. if 'FINAL' ever slips through)
+              if (!isNaN(elapsed) && !isNaN(temp) && !isNaN(curQ) && !isNaN(bestQ)) {
+                  chartLabels.push(elapsed.toFixed(1) + 's');
+                  chartTempData.push(temp);
+                  chartQData.push(curQ);
+                  chartBestQData.push(bestQ);
+                  saChart.update();
+              }
           }
       }
     } else {
