@@ -54,8 +54,8 @@ def segments_intersect(p1, p2, p3, p4):
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-#TIME_LIMIT = 28.0
-TIME_LIMIT = 180.0
+TIME_LIMIT = 28.0
+#TIME_LIMIT = 120.0
 EPS = 1e-6
 
 # BayType tuple indices
@@ -332,7 +332,7 @@ class Grid:
 class State:
     __slots__ = ('bay_types', 'wh', 'ceiling', 'obs_rects', 'grid',
                  'bays', 'active', 'sum_eff', 'sum_area', 'wh_area',
-                 'base_xs', 'base_ys', 'next_idx')
+                 'base_xs', 'base_ys', 'next_idx', 'candidate_corners', 'feasibility_cache')
 
     def __init__(self, bay_types, wh, obstacles, ceiling):
         self.bay_types = bay_types
@@ -358,12 +358,35 @@ class State:
             xs.update([ox, ox+ow]); ys.update([oy, oy+od])
         self.base_xs = sorted(xs)
         self.base_ys = sorted(ys)
+        
+        self.candidate_corners = []
+        self.feasibility_cache = {}
+        self.update_candidate_positions()
+
+    def update_candidate_positions(self):
+        corners = set()
+        for v in self.wh.verts:
+            corners.add((v[0], v[1]))
+        for ox, oy, ow, od in self.obs_rects:
+            corners.update([(ox, oy), (ox+ow, oy), (ox, oy+od), (ox+ow, oy+od)])
+        for idx in self.active:
+            b = self.bays[idx]
+            corners.update([(b[PB_X1], b[PB_Y1]), (b[PB_X2], b[PB_Y1]),
+                            (b[PB_X1], b[PB_Y2]), (b[PB_X2], b[PB_Y2])])
+        self.candidate_corners = list(corners)
 
     def quality(self):
         if not self.active: return 0.0
         return self.sum_eff ** 2 * (self.sum_area / self.wh_area)
 
     def feasible(self, bt, x, y, rot, excl=None):
+        r_x = round(x, 1)
+        r_y = round(y, 1)
+        r_rot = round(rot, 1)
+        k = (bt[BT_ID], r_x, r_y, r_rot, excl)
+        if k in self.feasibility_cache:
+            return self.feasibility_cache[k]
+        
         w = bt[BT_W]
         d = bt[BT_D] + bt[BT_G]
         corners = get_obb_corners(x, y, w, d, rot)
@@ -385,10 +408,14 @@ class State:
                 if sat_overlap(corners, obs_c): return False
             elif idx in self.active:
                 b = self.bays[idx]
-                if sat_overlap(corners, b[PB_CORNERS]): return False
+                if sat_overlap(corners, b[PB_CORNERS]):
+                    self.feasibility_cache[k] = False
+                    return False
+        self.feasibility_cache[k] = True
         return True
 
     def add(self, bt, x, y, rot):
+        self.feasibility_cache.clear()
         pb = make_placed_bay(bt, x, y, rot)
         idx = self.next_idx; self.next_idx += 1
         self.bays[idx] = pb
@@ -396,15 +423,18 @@ class State:
         self.grid.insert(idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
         self.sum_eff += bt[BT_EFF]
         self.sum_area += (pb[PB_X2] - pb[PB_X1]) * (pb[PB_Y2] - pb[PB_Y1])
+        self.update_candidate_positions()
         return idx
 
     def remove(self, idx):
+        self.feasibility_cache.clear()
         pb = self.bays[idx]
         bt = self.bay_types[pb[PB_TID]]
         self.grid.remove(idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
         self.active.discard(idx)
         self.sum_eff -= bt[BT_EFF]
         self.sum_area -= (pb[PB_X2] - pb[PB_X1]) * (pb[PB_Y2] - pb[PB_Y1])
+        self.update_candidate_positions()
         return pb
 
     def snapshot(self):
@@ -436,8 +466,9 @@ def greedy(state: State, time_limit: float):
     max_x, max_y = state.wh.max_x, state.wh.max_y
     total = 0
 
-    test_angles = state.wh.wall_angles if state.wh.wall_angles else [0.0, 90.0]
-    test_angles = list(set(test_angles))[:8]  # Limit to 8 angles to keep greedy fast
+    test_angles = state.wh.wall_angles if state.wh.wall_angles else []
+    test_angles += [0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0]
+    test_angles = list(set(test_angles))[:12]  # Expanded to 12 angles for grid occupancy scanning
     
     # Pass 1: strip packing with small step
     for bt in sorted_bt:
@@ -450,14 +481,19 @@ def greedy(state: State, time_limit: float):
             while y + d <= max_y + EPS:
                 if time.time() - start > time_limit * 0.5: break
                 x = min_x
+                row_placed = False
                 while x + w <= max_x + EPS:
                     if state.feasible(bt, x, y, rot):
                         state.add(bt, x, y, rot)
                         total += 1
                         x += w  # jump past placed bay
+                        row_placed = True
                     else:
-                        x += 50  # small step to find gaps
-                y += d
+                        x += 50  # sliding window X
+                if row_placed:
+                    y += d
+                else:
+                    y += 50  # sliding window Y
 
     # Pass 2+: candidate-based filling using placed bay corners
     for _pass in range(5):
@@ -489,6 +525,48 @@ def greedy(state: State, time_limit: float):
 
     print(f"  Greedy: {total} bays, Q={state.quality():.2f}", file=sys.stderr)
 
+def post_process(state: State):
+    """
+    Shrink & Shift optimization:
+    Temporarily removes each bay and tests minor translation limits (±10 up to 100)
+    and minor rotational shifts (±3 degrees). Keeps feasible shifts unconditionally 
+    since type remains the same (efficiency is preserved).
+    """
+    shifts = [(-10, 0), (10, 0), (0, -10), (0, 10), (-20, 0), (20, 0), (0, -20), (0, 20),
+              (-50, 0), (50, 0), (0, -50), (0, 50), (-100, 0), (100, 0), (0, -100), (0, 100)]
+    rotations = [-3.0, 3.0, -6.0, 6.0, -15.0, 15.0, -30.0, 30.0]
+    
+    active_bays = list(state.active)
+    for idx in active_bays:
+        if idx not in state.active: continue
+        pb = state.remove(idx)
+        bt = state.bay_types[pb[PB_TID]]
+        ox, oy, orot = pb[PB_X], pb[PB_Y], pb[PB_R]
+        
+        placed = False
+        # Try shifts
+        for dx, dy in shifts:
+            if state.feasible(bt, ox + dx, oy + dy, orot):
+                state.add(bt, ox + dx, oy + dy, orot)
+                placed = True
+                break
+        
+        # Try rotations if shift failed
+        if not placed:
+            for d_rot in rotations:
+                nr = (orot + d_rot) % 360.0
+                if state.feasible(bt, ox, oy, nr):
+                    state.add(bt, ox, oy, nr)
+                    placed = True
+                    break
+                    
+        # Revert if no minor enhancement valid
+        if not placed:
+            state.add(bt, ox, oy, orot)
+            
+    # Final localized greedy to squeeze any missing bays into the new micro-gaps
+    greedy(state, time_limit=3.0)
+
 
 # ---------------------------------------------------------------------------
 # Simulated Annealing
@@ -518,11 +596,66 @@ def sa(state: State, time_limit: float):
             if r <= c: return i
         return n_types - 1
 
-    T = max(1.0, best_q * 0.3) if best_q > 0 else 100.0
-    alpha = 0.99997
+    _random = random.random
+    _exp = math.exp
+    wh = state.wh
+    active_list = list(state.active)
+    
+    # Initial T0 Evaluation Limit Calculation
+    def sample_q_diffs(num=100):
+        diffs = []
+        for _ in range(num):
+            tid = pick_type()
+            bt = bay_types[tid]
+            rot = state.wh.wall_angles[int(_random() * len(state.wh.wall_angles))] if state.wh.wall_angles and _random() < 0.5 else _random() * 360.0
+            tx = wh.min_x + _random() * (wh.max_x - wh.min_x)
+            ty = wh.min_y + _random() * (wh.max_y - wh.min_y)
+            if state.feasible(bt, tx, ty, rot):
+                idx = state.add(bt, tx, ty, rot)
+                diffs.append(abs(state.quality() - cur_q))
+                state.remove(idx)
+        return diffs
+        
+    diffs = sample_q_diffs(100)
+    if diffs:
+        diffs.sort()
+        T0 = max(1.0, 2.0 * diffs[len(diffs) // 2])
+    else:
+        T0 = max(1.0, best_q * 0.3) if best_q > 0 else 100.0
+        
+    T = T0
+    max_iter = time_limit * 1000  # Estimate iterative bounds
+    beta = max(0.0001, (T0 / max(1e-6, T0 * 0.01) - 1) / max_iter if max_iter > 0 else 0.0001)
+
     iters = 0
     no_imp = 0
-    max_no_imp = 20000
+    max_no_imp = 10000
+    
+    # [ADD, REMOVE, MOVE, SWAP, REPACK] Dynamic Window Probabilities
+    move_probs = [0.4, 0.1, 0.3, 0.15, 0.05]
+    move_attempts = [0]*5
+    move_accepts = [0]*5
+    
+    def update_move_probs():
+        nonlocal move_probs, move_attempts, move_accepts
+        ratios = []
+        for i in range(5):
+            r = move_accepts[i] / move_attempts[i] if move_attempts[i] > 0 else 0.05
+            ratios.append(max(0.05, r))
+        tot = sum(ratios)
+        move_probs = [r / tot for r in ratios]
+        for i in range(5):
+            move_attempts[i] = 0
+            move_accepts[i] = 0
+
+    def get_move_type(n_active):
+        if n_active == 0: return 0
+        rv = _random()
+        s = 0.0
+        for i, p in enumerate(move_probs):
+            s += p
+            if rv <= s: return i
+        return 4
 
     active_list = list(state.active)
     _random = random.random
@@ -531,21 +664,29 @@ def sa(state: State, time_limit: float):
 
     while time.time() - start < time_limit:
         iters += 1
+        # Logarithmic cooling schedule instead of geometric
+        T = T0 / (1.0 + beta * iters)
+        
         n_active = len(active_list)
-        r = _random()
-
+        m_type = get_move_type(n_active)
+        move_attempts[m_type] += 1
+        
+        # Limit candidate positions update
+        if iters % 1000 == 0:
+            state.update_candidate_positions()
+            
+        if iters > 0 and iters % 500 == 0:
+            update_move_probs()
+            
         undo = None
 
-        if n_active == 0:
-            r = 0.0
-
-        if r < 0.50:
+        if m_type == 0:
             # === ADD ===
             tid = pick_type()
             bt = bay_types[tid]
             placed = False
 
-            # Strategy 1: adjacent to existing bay (70% chance)
+            # Strategy 1: adjacent to existing bay or candidate anchors
             if n_active > 0 and _random() < 0.75:
                 ref_idx = active_list[int(_random() * n_active)]
                 ref = state.bays[ref_idx]
@@ -571,20 +712,20 @@ def sa(state: State, time_limit: float):
                             break
                     if placed: break
 
-            # Strategy 2: random position + arbitrary angle
-            if not placed:
-                rot = _random() * 360.0 # Any rotation!
-                w = bt[BT_W]; d = bt[BT_D] + bt[BT_G]
-                max_span = max(w, d)
-                for _ in range(8):
-                    tx = wh.min_x + _random() * (wh.max_x - wh.min_x)
-                    ty = wh.min_y + _random() * (wh.max_y - wh.min_y)
-                    if state.feasible(bt, tx, ty, rot):
-                        idx = state.add(bt, tx, ty, rot)
-                        active_list.append(idx)
-                        undo = ('a', idx)
-                        placed = True
-                        break
+            # Strategy 2: Base corners and candidates
+            if not placed and state.candidate_corners:
+                add_test_angles = state.wh.wall_angles if state.wh.wall_angles else [0.0, 90.0, 180.0, 270.0]
+                add_test_angles = list(set(add_test_angles))[:8]
+                random.shuffle(state.candidate_corners)
+                for rot in add_test_angles:
+                    for x, y in state.candidate_corners[:6]:
+                        if state.feasible(bt, x, y, rot):
+                            idx = state.add(bt, x, y, rot)
+                            active_list.append(idx)
+                            undo = ('a', idx)
+                            placed = True
+                            break
+                    if placed: break
 
             # Strategy 3: base candidates
             if not placed:
@@ -606,7 +747,7 @@ def sa(state: State, time_limit: float):
                         if placed: break
                     if placed: break
 
-        elif r < 0.58:
+        elif m_type == 1:
             # === REMOVE ===
             if n_active > 0:
                 ai = int(_random() * n_active)
@@ -616,7 +757,7 @@ def sa(state: State, time_limit: float):
                 active_list.pop()
                 undo = ('r', idx, pb, ai)
 
-        elif r < 0.85:
+        elif m_type == 2:
             # === MOVE ===
             if n_active > 0:
                 ai = int(_random() * n_active)
@@ -692,7 +833,7 @@ def sa(state: State, time_limit: float):
                     new_idx = state.add(bt, ox, oy, orot)
                     active_list[ai] = new_idx
 
-        else:
+        elif m_type == 3:
             # === SWAP type ===
             if n_active > 0:
                 ai = int(_random() * n_active)
@@ -719,6 +860,49 @@ def sa(state: State, time_limit: float):
                         old_bt = bay_types[old_tid]
                         new_idx = state.add(old_bt, ox, oy, orot)
                         active_list[ai] = new_idx
+                        
+        elif m_type == 4:
+            # === REPACK ===
+            if n_active > 0:
+                ai = int(_random() * n_active)
+                idx = active_list[ai]
+                pb = state.bays[idx]
+                px_mid = (pb[PB_X1] + pb[PB_X2]) * 0.5
+                py_mid = (pb[PB_Y1] + pb[PB_Y2]) * 0.5
+                L = 4000.0  # localized square zone
+                half_L = L * 0.5
+                x_min, x_max = px_mid - half_L, px_mid + half_L
+                y_min, y_max = py_mid - half_L, py_mid + half_L
+                
+                to_remove = []
+                for b_idx in state.active:
+                    b_rect = state.bays[b_idx]
+                    if not (b_rect[PB_X2] < x_min or b_rect[PB_X1] > x_max or b_rect[PB_Y2] < y_min or b_rect[PB_Y1] > y_max):
+                        to_remove.append(b_idx)
+                
+                saved_bays = [(b_idx, state.bays[b_idx]) for b_idx in to_remove]
+                for b_idx in to_remove:
+                    state.remove(b_idx)
+                    try: active_list.remove(b_idx)
+                    except ValueError: pass
+                
+                added = []
+                step = L / 8.0 # Coarse scale to prevent extreme stalling
+                sys_ = [y_min + i * step for i in range(9)]
+                sxs = [x_min + i * step for i in range(9)]
+                test_angles = state.wh.wall_angles if state.wh.wall_angles else [0.0, 90.0]
+                test_angles = list(set(test_angles))[:4]
+                for bt in sorted(bay_types, key=lambda x: x[BT_EFF], reverse=True)[-3:]: # Only test top 3
+                    for rot in test_angles:
+                        w, d = bay_footprint(bt, rot)
+                        for y in sys_:
+                            for x in sxs:
+                                if state.feasible(bt, x, y, rot):
+                                    n_idx = state.add(bt, x, y, rot)
+                                    added.append(n_idx)
+                                    active_list.append(n_idx)
+                                    
+                undo = ('repack', saved_bays, added)
 
         if undo is None:
             continue
@@ -738,6 +922,7 @@ def sa(state: State, time_limit: float):
 
         if accept:
             cur_q = new_q
+            move_accepts[m_type] += 1
             if new_q > best_q:
                 best_q = new_q
                 best_snap = state.snapshot()
@@ -748,13 +933,16 @@ def sa(state: State, time_limit: float):
             _undo(state, undo, active_list)
             no_imp += 1
 
-        T *= alpha
-
-        if no_imp > max_no_imp:
+        # Skip `T *= alpha` explicitly replaced by Logarithmic cooling in header
+        
+        if no_imp > max_no_imp and T < 1e-5:
+            # Terminate entirely on dry bottom curve dynamically
+            break
+        elif no_imp > max_no_imp:
             state.restore(best_snap)
-            active_list = list(state.active)
+            active_list.clear(); active_list.extend(state.active)
             cur_q = best_q
-            T = max(0.5, best_q * 0.05)
+            T = max(1e-4, T0 * 0.05)
             no_imp = 0
 
     state.restore(best_snap)
@@ -765,7 +953,21 @@ def sa(state: State, time_limit: float):
 
 def _undo(state, info, active_list):
     kind = info[0]
-    if kind == 'a':
+    if kind == 'repack':
+        saved_bays, added = info[1], info[2]
+        for a_idx in added:
+            state.remove(a_idx)
+        for b_idx, pb in saved_bays:
+            state.bays[b_idx] = pb
+            state.active.add(b_idx)
+            state.grid.insert(b_idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
+            bt = state.bay_types[pb[PB_TID]]
+            state.sum_eff += bt[BT_EFF]
+            state.sum_area += (pb[PB_X2] - pb[PB_X1]) * (pb[PB_Y2] - pb[PB_Y1])
+        state.update_candidate_positions()
+        active_list.clear()
+        active_list.extend(state.active)
+    elif kind == 'a':
         state.remove(info[1])
         active_list.pop()
     elif kind == 'r':
@@ -859,9 +1061,13 @@ def main():
 
     # Phase 2: SA
     remaining = TIME_LIMIT - (time.time() - t0)
-    if remaining > 2.0:
-        print(f"Phase 2: SA ({remaining:.1f}s)...", file=sys.stderr)
-        sa(state, remaining)
+    if remaining > 6.0:
+        print(f"Phase 2: SA ({remaining - 5.0:.1f}s)...", file=sys.stderr)
+        sa(state, remaining - 5.0)
+
+    # Phase 3: Post-processing Shrink & Shift
+    print(f"Phase 3: Post-processing...", file=sys.stderr)
+    post_process(state)
 
     # Validate & output
     validate(state)
