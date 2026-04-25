@@ -268,7 +268,7 @@ class Grid:
 # ---------------------------------------------------------------------------
 class State:
     __slots__ = ('bay_types', 'wh', 'ceiling', 'obs_rects', 'grid',
-                 'bays', 'active', 'sum_eff', 'sum_area', 'wh_area',
+                 'bays', 'active', 'sum_price', 'sum_loads', 'sum_area', 'wh_area',
                  'base_xs', 'base_ys', 'next_idx')
 
     def __init__(self, bay_types, wh, obstacles, ceiling):
@@ -285,7 +285,8 @@ class State:
             self.grid.insert(-(i+2), ox1, oy1, ox2, oy2)
         self.bays = {}
         self.active = set()
-        self.sum_eff = 0.0
+        self.sum_price = 0.0
+        self.sum_loads = 0.0
         self.sum_area = 0.0
         self.wh_area = wh.area
         self.next_idx = 0
@@ -297,8 +298,9 @@ class State:
         self.base_ys = sorted(ys)
 
     def quality(self):
-        if not self.active: return 1e18
-        return self.sum_eff ** (2.0 - (self.sum_area / self.wh_area))
+        if not self.active or self.sum_loads == 0: return 1e18
+        current_eff = self.sum_price / self.sum_loads
+        return current_eff ** (2.0 - (self.sum_area / self.wh_area))
 
     def feasible(self, bt, x, y, rot, excl=None):
         w, d = bay_footprint(bt, rot)
@@ -330,7 +332,8 @@ class State:
         self.bays[idx] = pb
         self.active.add(idx)
         self.grid.insert(idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
-        self.sum_eff += bt[BT_EFF]
+        self.sum_price += bt[BT_PR]
+        self.sum_loads += bt[BT_NL]
         self.sum_area += bt[BT_W] * bt[BT_D]
         return idx
 
@@ -339,7 +342,8 @@ class State:
         bt = self.bay_types[pb[PB_TID]]
         self.grid.remove(idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
         self.active.discard(idx)
-        self.sum_eff -= bt[BT_EFF]
+        self.sum_price -= bt[BT_PR]
+        self.sum_loads -= bt[BT_NL]
         self.sum_area -= bt[BT_W] * bt[BT_D]
         return pb
 
