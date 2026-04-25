@@ -6,7 +6,7 @@ from pymongo import AsyncMongoClient
 
 load_dotenv()
 
-# Required env vars: MONGODB_URL, DATABASE_NAME, OPTIMIZER_URL, BACKEND_URL
+# Required env vars: MONGODB_URL, DATABASE_NAME
 MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 DATABASE_NAME: str = os.getenv("DATABASE_NAME", "warehouseos")
 
@@ -20,10 +20,10 @@ async def connect_db() -> None:
     _db = _client[DATABASE_NAME]
 
 
-def close_db() -> None:
+async def close_db() -> None:
     global _client
     if _client is not None:
-        _client.close()
+        await _client.close()
         _client = None
 
 

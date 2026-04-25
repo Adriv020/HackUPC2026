@@ -11,7 +11,7 @@ async def watch_placements(db) -> None:
     """
     pipeline = [{"$match": {"operationType": "insert"}}]
     try:
-        async with db.bay_placements.watch(pipeline, full_document="updateLookup") as stream:
+        async with await db.bay_placements.watch(pipeline, full_document="updateLookup") as stream:
             async for change in stream:
                 doc = change.get("fullDocument", {})
                 sid = str(doc.get("scenarioId", ""))

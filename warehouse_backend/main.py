@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
         await task
     except asyncio.CancelledError:
         pass
-    close_db()
+    await close_db()
 
 
 app = FastAPI(title="WarehouseOS API", version="1.0.0", lifespan=lifespan)
