@@ -6,7 +6,7 @@ __pycache__/
 venv/
 .venv/
 env/
-
+output*.csv
 .env
 .idea/
 PublicTestCases/
