@@ -38,10 +38,10 @@ export function EarthBackdrop({
           uFlatRadius: { value: keepFlatRadius * 1.04 },
           uTerrainRadius: { value: groundTerrainSize * 0.52 },
           uGroundHeight: { value: Math.max(0.56, keepFlatRadius * 0.062) },
-          uColorDark: { value: new Color("#5aab35") },     // Rich bright grass green
-          uColorMid: { value: new Color("#83c74c") },      // Vibrant sunlit grass
-          uColorDust: { value: new Color("#badb76") },     // Bright yellow-green highlights
-          uColorFogBlend: { value: new Color("#daeef8") }, // Matches scene fog
+          uColorDark: { value: new Color("#b5d36e") },     // Pastel lime
+          uColorMid: { value: new Color("#c4e07a") },      // Light pastel lime
+          uColorDust: { value: new Color("#d2ec88") },     // Very light lime highlight
+          uColorFogBlend: { value: new Color("#f4f8fa") }, // Matches the sky horizon
         },
       ]),
     [groundTerrainSize, keepFlatRadius]
@@ -61,10 +61,10 @@ export function EarthBackdrop({
           uInnerRadius: { value: keepFlatRadius * 1.95 },
           uOuterRadius: { value: terrainSize * 0.95 },
           uMountainHeight: { value: Math.max(2.5, terrainSize * 0.08) },
-          uColorShadow: { value: new Color("#46933c") },   // Brighter hill shadow
-          uColorMid: { value: new Color("#62b54d") },      // Vibrant hill green
-          uColorTop: { value: new Color("#aedb9c") },      // Light grassy peak
-          uColorFogBlend: { value: new Color("#daeef8") }, // Matches scene fog
+          uColorShadow: { value: new Color("#a9c864") },   // Pastel hill shadow
+          uColorMid: { value: new Color("#b5d36e") },      // Pastel hill mid
+          uColorTop: { value: new Color("#c4e07a") },      // Pastel peak
+          uColorFogBlend: { value: new Color("#f4f8fa") }, // Matches the sky horizon
         },
       ]),
     [keepFlatRadius, terrainSize]

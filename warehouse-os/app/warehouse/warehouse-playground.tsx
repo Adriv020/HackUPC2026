@@ -192,7 +192,7 @@ export function WarehousePlayground() {
     return (
       <div
         className="relative h-svh w-full overflow-hidden"
-        style={{ background: "#c8e6f5" }}
+        style={{ background: "linear-gradient(to bottom, #76d0f5 0%, #f4f8fa 100%)" }}
       >
         {/* R3F canvas fills the screen */}
         <div className="absolute inset-0">
@@ -273,7 +273,7 @@ export function WarehousePlayground() {
   return (
     <div
       className="flex min-h-svh flex-col items-center justify-center p-6"
-      style={{ background: "#c8e6f5" }}
+      style={{ background: "linear-gradient(to bottom, #76d0f5 0%, #f4f8fa 100%)" }}
     >
       <div className="w-full max-w-2xl space-y-6">
 

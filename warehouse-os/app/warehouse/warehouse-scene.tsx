@@ -41,19 +41,17 @@ function IntroCameraController({
     const elapsed = performance.now() - introStartMs
     const rawT = Math.min(elapsed / INTRO_DURATION_MS, 1)
     const easedT = easeOutQuint(rawT)
-    const startX = cx + maxDim * 1.05
-    const startY = maxDim * 1.15
-    const startZ = cz - maxDim * 0.85
-    const endX = cx + maxDim * 0.52
-    const endY = maxDim * 0.52
-    const endZ = cz + maxDim * 0.72
-    const orbitFade = 1 - easedT
-    const orbitAngle = orbitFade * Math.PI * 1.3
-    const orbitR = maxDim * 0.3 * orbitFade
+    const startX = cx + maxDim * 3.2
+    const startY = maxDim * 2.8
+    const startZ = cz + maxDim * 3.2
+    const endX = cx + maxDim * 0.7
+    const endY = maxDim * 0.6
+    const endZ = cz + maxDim * 0.8
+
     camera.position.set(
-      lerp(startX, endX, easedT) + Math.sin(orbitAngle) * orbitR,
+      lerp(startX, endX, easedT),
       lerp(startY, endY, easedT),
-      lerp(startZ, endZ, easedT) + Math.cos(orbitAngle) * orbitR,
+      lerp(startZ, endZ, easedT),
     )
     camera.lookAt(cx, 0, cz)
     if (rawT >= 1) { doneRef.current = true; onDone() }
@@ -84,9 +82,9 @@ export function WarehouseScene({
   const maxDim = Math.max(bounds.width, bounds.depth)
 
   const initPos: [number, number, number] = [
-    cx + maxDim * 1.05,
-    maxDim * 1.15,
-    cz - maxDim * 0.85,
+    cx + maxDim * 3.2,
+    maxDim * 2.8,
+    cz + maxDim * 3.2,
   ]
 
   const handleDone = useCallback(() => { onIntroDone() }, [onIntroDone])
@@ -109,13 +107,11 @@ export function WarehouseScene({
       camera={{ position: initPos, fov: 45, near: 0.1, far: 3000 }}
       shadows
       dpr={[1, 1.5]}
-      gl={{ antialias: true, powerPreference: "high-performance" }}
+      gl={{ antialias: true, powerPreference: "high-performance", alpha: true }}
       onPointerMissed={onClearSelection}
     >
-      {/* Bright sky blue background */}
-      <color attach="background" args={["#c8e6f5"]} />
-      {/* Very light haze — barely-there, keeps depth without darkening */}
-      <fog attach="fog" args={["#daeef8", maxDim * 6, maxDim * 20]} />
+      {/* Fog blends the terrain edge into the light horizon */}
+      <fog attach="fog" args={["#f4f8fa", maxDim * 6, maxDim * 20]} />
 
       {/* ── Sunny warehouse lighting ────────────────────────────────────── */}
       {/* Bright sky ambient — fills everything with cool blue-white light */}
