@@ -13,7 +13,7 @@ import {
   type PlacedBay,
   type BayTypeConfig,
 } from "@/lib/warehouse-service"
-import { WarehouseScene, type IntroPhase } from "./warehouse-scene"
+import { WarehouseScene, type IntroPhase, type ExteriorMode } from "./warehouse-scene"
 import { InfoPanel } from "./components/info-panel"
 import { loadTestCase } from "./actions"
 
@@ -111,6 +111,10 @@ export function WarehousePlayground() {
   const [introStartMs, setIntroStartMs] = useState(0)
   const [selectedBayId, setSelectedBayId] = useState<string | null>(null)
 
+  // New state for exterior visibility control
+  const [exteriorMode, setExteriorMode] = useState<ExteriorMode>("auto")
+  const [isExteriorMenuOpen, setIsExteriorMenuOpen] = useState(false)
+
   const allUploaded = Object.values(uploads).every(v => v !== null)
 
   // Parse all CSVs once all four files are present
@@ -207,6 +211,7 @@ export function WarehousePlayground() {
             selectedBayId={selectedBayId}
             onSelectBay={handleSelectBay}
             onClearSelection={handleClearSelection}
+            exteriorMode={exteriorMode}
           />
         </div>
 
@@ -226,33 +231,65 @@ export function WarehousePlayground() {
         </div>
 
         {/* ── Status chip ─────────────────────────────────────────────────── */}
-        <div className="pointer-events-none absolute top-4 right-4 z-20">
+        <div className="pointer-events-none absolute top-4 right-4 z-20 flex flex-col items-end gap-2">
           <div
-            className="rounded-full border px-3 py-1.5 text-xs backdrop-blur"
+            className="rounded-full border px-3 py-1 text-xs font-medium tracking-wide backdrop-blur"
             style={{
               borderColor: "rgba(15,23,42,0.1)",
-              background: "rgba(255,255,255,0.5)",
-              color: "rgba(15,23,42,0.6)",
+              background: "rgba(255,255,255,0.4)",
+              color: "rgba(15,23,42,0.7)",
             }}
           >
-            {introPhase === "intro_orbit"
-              ? "Loading scene…"
-              : `WarehouseOS · ${parsedData.placedBays.length} bays · drag to orbit · scroll to zoom`}
+            WarehouseOS · {parsedData.placedBays.length} bays · drag to orbit · scroll to zoom
           </div>
-        </div>
-
-        {/* ── Bay stats chip ───────────────────────────────────────────────── */}
-        <div className="pointer-events-none absolute top-12 right-4 z-20 mt-2">
           <div
-            className="rounded-full border px-3 py-1.5 text-xs backdrop-blur"
+            className="rounded-full border px-3 py-1 text-xs font-semibold backdrop-blur"
             style={{
-              borderColor: "rgba(37,99,235,0.2)",
-              background: "rgba(219,234,254,0.6)",
-              color: "rgba(30,64,175,0.8)",
+              borderColor: "rgba(15,23,42,0.15)",
+              background: "rgba(255,255,255,0.5)",
+              color: "#3b82f6",
             }}
           >
             {parsedData.placedBays.length} / {parsedData.bayTypes.reduce((s, t) => s + t.count, 0)} bays placed
           </div>
+        </div>
+
+        {/* ── Exterior Controls ────────────────────────────────────────────── */}
+        <div className="pointer-events-auto absolute top-24 right-4 z-20 flex flex-col items-end">
+          <button
+            onClick={() => setIsExteriorMenuOpen(prev => !prev)}
+            className="rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
+            style={{
+              borderColor: "rgba(15,23,42,0.15)",
+              background: "rgba(255,255,255,0.6)",
+              color: "rgba(15,23,42,0.8)",
+            }}
+          >
+            Exterior: <span className="capitalize">{exteriorMode}</span> ▾
+          </button>
+          
+          {isExteriorMenuOpen && (
+            <div className="mt-2 flex flex-col overflow-hidden rounded-lg border backdrop-blur"
+              style={{
+                borderColor: "rgba(15,23,42,0.15)",
+                background: "rgba(255,255,255,0.8)",
+              }}
+            >
+              {(["auto", "hidden", "translucent"] as ExteriorMode[]).map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => { setExteriorMode(mode); setIsExteriorMenuOpen(false) }}
+                  className="px-4 py-2 text-sm text-left hover:bg-black/5 capitalize transition-colors"
+                  style={{
+                    color: exteriorMode === mode ? "#000" : "rgba(15,23,42,0.7)",
+                    fontWeight: exteriorMode === mode ? 600 : 400
+                  }}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── Info panel — shown when a bay is selected ──────────────────── */}

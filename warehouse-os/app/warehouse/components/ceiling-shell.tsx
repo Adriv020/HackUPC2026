@@ -10,10 +10,12 @@ import {
   type Point2D,
   type WarehousePolygon,
 } from "@/lib/warehouse-service"
+import type { ExteriorMode } from "../warehouse-scene"
 
 type Props = {
   polygon: WarehousePolygon
   ceilingProfile: CeilingProfile
+  exteriorMode: ExteriorMode
 }
 
 // BUG 2 FIX: Completely rebuilt ceiling using Sutherland-Hodgman polygon clipping.
@@ -43,7 +45,7 @@ function buildCeilingPanelGeo(clippedPoly: Point2D[], thickness: number): THREE.
 
 const PANEL_THICKNESS = 0.1
 
-export function CeilingShell({ polygon, ceilingProfile }: Props) {
+export function CeilingShell({ polygon, ceilingProfile, exteriorMode }: Props) {
   const { points } = polygon
   const bounds = useMemo(() => computeWarehouseBounds(polygon), [polygon])
   const gridCenter = useMemo(
@@ -63,21 +65,32 @@ export function CeilingShell({ polygon, ceilingProfile }: Props) {
   }
 
   useFrame(({ camera }, delta) => {
-    const focus = focusPointRef.current
-    focus.set(gridCenter[0], 2, gridCenter[1])
-    const distance = camera.position.distanceTo(focus)
-    
-    // Fade out when zooming close to the center
-    const maxDim = Math.max(bounds.width, bounds.depth)
-    const nearHideDistance = maxDim * 0.45
-    const farShowDistance = nearHideDistance + 10
-    
-    const targetFade = Math.max(0, Math.min(1, (distance - nearHideDistance) / (farShowDistance - nearHideDistance)))
-    const smoothFactor = Math.max(0, Math.min(1, delta * 4.8))
-    fadeValueRef.current += (targetFade - fadeValueRef.current) * smoothFactor
-    
-    const opacity = Math.pow(fadeValueRef.current, 1.1)
-    const depthWrite = opacity > 0.96
+    let opacity = 1
+    let depthWrite = true
+
+    if (exteriorMode === "hidden") {
+      opacity = 0
+      depthWrite = false
+    } else if (exteriorMode === "translucent") {
+      opacity = 0.2
+      depthWrite = false
+    } else {
+      // Auto Mode
+      const focus = focusPointRef.current
+      focus.set(gridCenter[0], 2, gridCenter[1])
+      const distance = camera.position.distanceTo(focus)
+      
+      const maxDim = Math.max(bounds.width, bounds.depth)
+      const nearHideDistance = maxDim * 1.2
+      const farShowDistance = maxDim * 1.6
+      
+      const targetFade = Math.max(0, Math.min(1, (distance - nearHideDistance) / (farShowDistance - nearHideDistance)))
+      const smoothFactor = Math.max(0, Math.min(1, delta * 4.8))
+      fadeValueRef.current += (targetFade - fadeValueRef.current) * smoothFactor
+      
+      opacity = Math.pow(fadeValueRef.current, 1.1)
+      depthWrite = opacity > 0.96
+    }
     
     for (const material of materialRefs.current) {
       material.opacity = opacity

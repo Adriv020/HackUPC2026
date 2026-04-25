@@ -59,6 +59,8 @@ function IntroCameraController({
   return null
 }
 
+export type ExteriorMode = "auto" | "hidden" | "translucent"
+
 type Props = {
   polygon: WarehousePolygon
   obstacles: ObstacleConfig[]
@@ -70,12 +72,14 @@ type Props = {
   selectedBayId: string | null
   onSelectBay: (bayId: string) => void
   onClearSelection: () => void
+  exteriorMode: ExteriorMode
 }
 
 export function WarehouseScene({
   polygon, obstacles, ceilingProfile, placedBays,
   introPhase, introStartMs, onIntroDone,
   selectedBayId, onSelectBay, onClearSelection,
+  exteriorMode,
 }: Props) {
   const bounds = useMemo(() => computeWarehouseBounds(polygon), [polygon])
   const [cx, cz] = useMemo(() => computeWarehouseCentroid(polygon), [polygon])
@@ -152,9 +156,9 @@ export function WarehouseScene({
         floorWidth={bounds.width}
         floorDepth={bounds.depth}
       />
-      <WarehouseShell polygon={polygon} ceilingProfile={ceilingProfile} />
+      <WarehouseShell polygon={polygon} ceilingProfile={ceilingProfile} exteriorMode={exteriorMode} />
       <ObstacleGroup obstacles={obstacles} ceilingProfile={ceilingProfile} />
-      <CeilingShell polygon={polygon} ceilingProfile={ceilingProfile} />
+      <CeilingShell polygon={polygon} ceilingProfile={ceilingProfile} exteriorMode={exteriorMode} />
       <BayGroup
         placedBays={placedBays}
         selectedBayId={selectedBayId}
