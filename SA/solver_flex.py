@@ -54,8 +54,8 @@ def segments_intersect(p1, p2, p3, p4):
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-TIME_LIMIT = 28.0
-#TIME_LIMIT = 120.0
+#TIME_LIMIT = 28.0
+TIME_LIMIT = 180.0
 EPS = 1e-6
 
 # BayType tuple indices
@@ -944,6 +944,10 @@ def sa(state: State, time_limit: float):
             cur_q = best_q
             T = max(1e-4, T0 * 0.05)
             no_imp = 0
+
+        # Output telemetry every arbitrary block
+        if iters % 100 == 0:
+            print(f"[METRIC] {iters},{time.time()-start:.3f},{T:.2f},{cur_q:.2f},{best_q:.2f}")
 
     state.restore(best_snap)
     elapsed = time.time() - start
