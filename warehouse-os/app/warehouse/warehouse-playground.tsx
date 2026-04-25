@@ -134,7 +134,7 @@ export function WarehousePlayground() {
 
       // Place bays using the layout algorithm
       const placed = placeBays(bayTypes, polygon, obstacles, ceilingProfile)
-      console.log(`[WarehouseOS] Total bays placed: ${placed.length} / ${bayTypes.reduce((s, t) => s + t.count, 0)} requested`)
+      console.log(`[WarehouseOS] Total bays placed: ${placed.length}`)
 
       setParsedData({ polygon, obstacles, ceilingProfile, bayTypes, placedBays: placed })
       setIntroStartMs(performance.now())
@@ -250,7 +250,7 @@ export function WarehousePlayground() {
               color: "#3b82f6",
             }}
           >
-            {parsedData.placedBays.length} / {parsedData.bayTypes.reduce((s, t) => s + t.count, 0)} bays placed
+            {parsedData.placedBays.length} bays placed
           </div>
         </div>
 

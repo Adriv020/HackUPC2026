@@ -26,8 +26,19 @@ export function Bay({ bay, isSelected, onSelectBay }: BayProps) {
   const halfW = width / 2
   const halfD = depth / 2
 
-  // Number of shelf levels
-  const levels = Math.max(1, Math.floor(height / 0.8))
+  const nLoads = bay.bayTypeData.nLoads || 0
+
+  // Box logic (1 unit = 100mm, so 5.0 = 500mm box)
+  const BOX_SIZE = 5.0
+  const usableW = width - 1.0
+  const usableD = depth - 1.0
+  
+  const boxesPerRow = Math.max(1, Math.floor(usableW / BOX_SIZE))
+  const rowsPerShelf = Math.max(1, Math.floor(usableD / BOX_SIZE))
+  const capacityPerShelf = boxesPerRow * rowsPerShelf
+
+  // Calculate shelves needed to fit all loads (minimum 1)
+  const levels = Math.max(1, Math.ceil(nLoads / capacityPerShelf))
 
   // Upright post positions (4 corners relative to bay centre)
   const uprightPositions: [number, number, number][] = [
@@ -111,6 +122,41 @@ export function Bay({ bay, isSelected, onSelectBay }: BayProps) {
                 roughness={0.8}
               />
             </mesh>
+
+            {/* Boxes on this shelf */}
+            {Array.from({ length: Math.min(capacityPerShelf, Math.max(0, nLoads - li * capacityPerShelf)) }).map((_, boxIdx) => {
+              const row = Math.floor(boxIdx / boxesPerRow)
+              const col = boxIdx % boxesPerRow
+              
+              const totalW = boxesPerRow * BOX_SIZE
+              const totalD = rowsPerShelf * BOX_SIZE
+              const startX = -totalW / 2 + BOX_SIZE / 2
+              const startZ = -totalD / 2 + BOX_SIZE / 2
+              
+              const bx = startX + col * BOX_SIZE
+              const bz = startZ + row * BOX_SIZE
+              const by = 0.05 + (BOX_SIZE * 0.95) / 2
+              
+              return (
+                <group key={`box-${boxIdx}`} position={[bx, by, bz]}>
+                  {/* Cardboard Box */}
+                  <mesh castShadow receiveShadow>
+                    <boxGeometry args={[BOX_SIZE * 0.95, BOX_SIZE * 0.95, BOX_SIZE * 0.95]} />
+                    <meshStandardMaterial color="#cfa474" roughness={0.9} flatShading={true} />
+                  </mesh>
+                  {/* Blue Tape Stripe */}
+                  <mesh position={[0, (BOX_SIZE * 0.95) / 2 + 0.002, 0]} castShadow>
+                    <boxGeometry args={[BOX_SIZE * 0.95, 0.005, BOX_SIZE * 0.15]} />
+                    <meshStandardMaterial color="#3b82f6" roughness={0.6} />
+                  </mesh>
+                  {/* White Label */}
+                  <mesh position={[(BOX_SIZE * 0.95) / 2 + 0.002, 0, BOX_SIZE * 0.2]} castShadow>
+                    <boxGeometry args={[0.005, BOX_SIZE * 0.2, BOX_SIZE * 0.25]} />
+                    <meshStandardMaterial color="#ffffff" roughness={0.5} />
+                  </mesh>
+                </group>
+              )
+            })}
           </group>
         )
       })}

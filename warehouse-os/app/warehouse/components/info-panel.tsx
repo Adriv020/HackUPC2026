@@ -131,15 +131,16 @@ export function InfoPanel({ bay, onClearSelection }: Props) {
       {/* Divider */}
       <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginBottom: 12 }} />
 
-      {/* col4 and col6 — pending column definition */}
+      {/* Additional Bay Attributes */}
       <div style={{ display: "flex", gap: 16 }}>
-        {/* TODO: pending — awaiting column definition for col4 */}
         <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
-          col4: <span style={{ color: "rgba(255,255,255,0.6)" }}>{bayTypeData.col4}</span>
+          Gap: <span style={{ color: "rgba(255,255,255,0.6)" }}>{bayTypeData.gap}</span>
         </span>
-        {/* TODO: pending — awaiting column definition for col6 */}
         <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
-          col6: <span style={{ color: "rgba(255,255,255,0.6)" }}>{bayTypeData.col6}</span>
+          nLoads: <span style={{ color: "rgba(255,255,255,0.6)" }}>{bayTypeData.nLoads}</span>
+        </span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+          Price: <span style={{ color: "rgba(255,255,255,0.6)" }}>{bayTypeData.price}</span>
         </span>
       </div>
     </div>
