@@ -330,6 +330,7 @@ def generate_html(data):
       <label class="control-row"><input type="checkbox" id="showGrid" checked onchange="draw()"> Grid</label>
       <label class="control-row"><input type="checkbox" id="showLabels" checked onchange="draw()"> Bay IDs</label>
       <label class="control-row"><input type="checkbox" id="showDims" onchange="draw()"> Dimensions</label>
+      <label class="control-row"><input type="checkbox" id="showAxes" onchange="draw()"> Local Axes</label>
       <label class="control-row"><input type="checkbox" id="showCeilingHeat" checked onchange="draw()"> Ceiling heatmap</label>
       <label class="control-row"><input type="checkbox" id="showCeilingMargin" checked onchange="draw()"> Bay ceiling margin</label>
     </div>
@@ -475,12 +476,13 @@ function draw() {{
   const showDims = document.getElementById('showDims').checked;
   const showHeat = document.getElementById('showCeilingHeat').checked;
   const showMargin = document.getElementById('showCeilingMargin').checked;
+  const showAxes = document.getElementById('showAxes').checked;
 
   if (showGrid) drawGrid();
   if (showHeat) drawCeilingHeatmap();
   drawWarehouse();
   drawObstacles();
-  drawBays(showLabels, showDims, showMargin);
+  drawBays(showLabels, showDims, showMargin, showAxes);
   drawCeilingChart();
 }}
 
@@ -576,7 +578,35 @@ function drawObstacles() {{
   }}
 }}
 
-function drawBays(showLabels, showDims, showMargin) {{
+function drawArrow(ctx, fromX, fromY, toX, toY, color, label) {{
+  const headlen = 8;
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  if(Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+  const angle = Math.atan2(dy, dx);
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(fromX, fromY);
+  ctx.lineTo(toX, toY);
+  ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 7), toY - headlen * Math.sin(angle - Math.PI / 7));
+  ctx.moveTo(toX, toY);
+  ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 7), toY - headlen * Math.sin(angle + Math.PI / 7));
+  ctx.stroke();
+  if (label) {{
+     ctx.font = "11px Inter,sans-serif";
+     ctx.textAlign = "center";
+     ctx.textBaseline = "middle";
+     const mx = (fromX + toX) / 2;
+     const my = (fromY + toY) / 2;
+     const offX = Math.cos(angle - Math.PI/2) * 10;
+     const offY = Math.sin(angle - Math.PI/2) * 10;
+     ctx.fillText(label, mx + offX, my + offY);
+  }}
+}}
+
+function drawBays(showLabels, showDims, showMargin, showAxes) {{
   for (let i=0; i<DATA.placed.length; i++) {{
     const b = DATA.placed[i];
     const color = typeColor(b.typeId);
@@ -660,6 +690,27 @@ function drawBays(showLabels, showDims, showMargin) {{
         ctx.fillText(`↕${{b.ceilingMargin.toFixed(0)}}`, 0, fs*1.5);
       }}
       ctx.restore();
+    }}
+    
+    // Axes overlay
+    if (showAxes) {{
+      let [ox, oy] = worldToScreen(b.corners[0][0], b.corners[0][1]);
+      let [xx, xy] = worldToScreen(b.corners[1][0], b.corners[1][1]);
+      let [yx, yy] = worldToScreen(b.corners[3][0], b.corners[3][1]);
+      
+      const capArrow = (fromP, toP, maxLen) => {{
+         const dx = toP[0] - fromP[0]; const dy = toP[1] - fromP[1];
+         const len = Math.hypot(dx, dy);
+         if (len < 1) return fromP;
+         const actualLen = Math.min(len * 0.9, maxLen); // cap at 90% of side or maxLen
+         return [fromP[0] + (dx/len)*actualLen, fromP[1] + (dy/len)*actualLen];
+      }};
+      
+      const xEnd = capArrow([ox, oy], [xx, xy], 50);
+      const yEnd = capArrow([ox, oy], [yx, yy], 50);
+
+      drawArrow(ctx, ox, oy, xEnd[0], xEnd[1], '#ef0000', 'x');
+      drawArrow(ctx, ox, oy, yEnd[0], yEnd[1], '#00c500', 'y');
     }}
   }}
 }}
