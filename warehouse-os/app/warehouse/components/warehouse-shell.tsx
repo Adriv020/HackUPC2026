@@ -43,19 +43,80 @@ export function WarehouseShell({ polygon, ceilingProfile }: Props) {
     [bounds]
   )
 
-  // Walls: one BoxGeometry per polygon edge
+  // Helper to get discrete flat ceiling height to match ceiling-shell.tsx
+  const getCeilingHeightDiscrete = (profile: CeilingProfile, x: number): number => {
+    const { segments } = profile
+    if (segments.length === 0) return 30
+    if (segments.length === 1) return segments[0].height
+    if (x < segments[0].x) return segments[0].height
+    
+    for (let i = 0; i < segments.length - 1; i++) {
+      const seg = segments[i]
+      const next = segments[i + 1]
+      if (x >= seg.x && x < next.x) {
+        return seg.height
+      }
+    }
+    return segments[segments.length - 1].height
+  }
+
+  // Walls: split at ceiling X-breakpoints to match ceiling steps exactly
   const walls = useMemo(() => {
-    return points.map((p1, i) => {
+    const rawWalls = points.map((p1, i) => {
       const p2 = points[(i + 1) % points.length]
-      const dx = p2.x - p1.x
-      const dz = p2.z - p1.z
+      return { p1, p2 }
+    })
+
+    const splitWalls: Array<{ p1: { x: number, z: number }, p2: { x: number, z: number }, height: number }> = []
+
+    for (const wall of rawWalls) {
+      const { p1, p2 } = wall
+      if (Math.abs(p1.x - p2.x) < 0.001) {
+        // Wall is vertical (parallel to Z axis), so it has a single X coordinate.
+        // It stays entirely under one ceiling panel.
+        const height = getCeilingHeightDiscrete(ceilingProfile, p1.x)
+        splitWalls.push({ p1, p2, height })
+      } else {
+        // Wall spans X coordinates. Split it at every ceiling segment breakpoint.
+        const minX = Math.min(p1.x, p2.x)
+        const maxX = Math.max(p1.x, p2.x)
+        const breakpoints = ceilingProfile.segments
+          .map(s => s.x)
+          .filter(x => x > minX + 0.001 && x < maxX - 0.001) // avoid splitting exactly at corners
+          .sort((a, b) => a - b)
+
+        if (p1.x > p2.x) breakpoints.reverse()
+
+        let currentP = p1
+        for (const bpX of breakpoints) {
+          const t = (bpX - currentP.x) / (p2.x - currentP.x)
+          const intersectZ = currentP.z + t * (p2.z - currentP.z)
+          const bpP = { x: bpX, z: intersectZ }
+          
+          const midX = (currentP.x + bpP.x) / 2
+          const height = getCeilingHeightDiscrete(ceilingProfile, midX)
+          splitWalls.push({ p1: currentP, p2: bpP, height })
+          
+          currentP = bpP
+        }
+        
+        // Final segment
+        const midX = (currentP.x + p2.x) / 2
+        const height = getCeilingHeightDiscrete(ceilingProfile, midX)
+        splitWalls.push({ p1: currentP, p2, height })
+      }
+    }
+
+    let index = 0
+    return splitWalls.map(w => {
+      const dx = w.p2.x - w.p1.x
+      const dz = w.p2.z - w.p1.z
       const len = Math.sqrt(dx * dx + dz * dz)
       if (len < 0.001) return null
-      const midX = (p1.x + p2.x) / 2
-      const midZ = (p1.z + p2.z) / 2
-      const wallHeight = getCeilingHeight(ceilingProfile, midX)
+      const midX = (w.p1.x + w.p2.x) / 2
+      const midZ = (w.p1.z + w.p2.z) / 2
       const rotY = -Math.atan2(dz, dx)
-      return { len, midX, midZ, wallHeight, rotY, key: `wall-${i}` }
+      return { len, midX, midZ, wallHeight: w.height, rotY, key: `wall-${index++}` }
     }).filter((w): w is NonNullable<typeof w> => w !== null)
   }, [points, ceilingProfile])
 
