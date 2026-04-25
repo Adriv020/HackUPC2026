@@ -4,72 +4,109 @@
 
 ## Quick Start
 
+### Solve a case
+
 ```bash
-python3 solver.py <warehouse.csv> <obstacles.csv> <ceiling.csv> <types_of_bays.csv> <output.csv>
+# Case 0 (L-shaped warehouse, 3 obstacles)
+python3 solver.py ../PublicTestCases/Case0/warehouse.csv ../PublicTestCases/Case0/obstacles.csv ../PublicTestCases/Case0/ceiling.csv ../PublicTestCases/Case0/types_of_bays.csv output_case0.csv
+
+# Case 1 (square, no obstacles)
+python3 solver.py ../PublicTestCases/Case1/warehouse.csv ../PublicTestCases/Case1/obstacles.csv ../PublicTestCases/Case1/ceiling.csv ../PublicTestCases/Case1/types_of_bays.csv output_case1.csv
+
+# Case 3 (plus-shaped, complex)
+python3 solver.py ../PublicTestCases/Case3/warehouse.csv ../PublicTestCases/Case3/obstacles.csv ../PublicTestCases/Case3/ceiling.csv ../PublicTestCases/Case3/types_of_bays.csv output_case3.csv
 ```
 
-### Run on a specific test case
+### Validate a solution
+
 ```bash
-bash run.sh 0           # Run Case 0, output to output_case0.csv
-bash run.sh 2 my.csv    # Run Case 2, output to my.csv
+# Validate Case 0 output
+python3 validator.py ../PublicTestCases/Case0/warehouse.csv ../PublicTestCases/Case0/obstacles.csv ../PublicTestCases/Case0/ceiling.csv ../PublicTestCases/Case0/types_of_bays.csv output_case0.csv
+
+# Validate Case 3 output
+python3 validator.py ../PublicTestCases/Case3/warehouse.csv ../PublicTestCases/Case3/obstacles.csv ../PublicTestCases/Case3/ceiling.csv ../PublicTestCases/Case3/types_of_bays.csv output_case3.csv
 ```
 
-### Run all test cases
+### Visualize a solution (opens in browser)
+
 ```bash
-bash run_all.sh
+# Visualize Case 0 → opens viz_case0.html
+python3 visualize.py ../PublicTestCases/Case0/warehouse.csv ../PublicTestCases/Case0/obstacles.csv ../PublicTestCases/Case0/ceiling.csv ../PublicTestCases/Case0/types_of_bays.csv output_case0.csv viz_case0.html
+
+# Visualize Case 3
+python3 visualize.py ../PublicTestCases/Case3/warehouse.csv ../PublicTestCases/Case3/obstacles.csv ../PublicTestCases/Case3/ceiling.csv ../PublicTestCases/Case3/types_of_bays.csv output_case3.csv viz_case3.html
 ```
+
+### Convenience scripts
+
+```bash
+bash run.sh 0              # Solve Case 0 → output_case0.csv
+bash run.sh 2 my.csv       # Solve Case 2 → my.csv
+bash run_all.sh            # Solve all 4 cases sequentially
+```
+
+### Full pipeline (solve → validate → visualize)
+
+```bash
+# Solve, then validate, then visualize Case 0
+python3 solver.py ../PublicTestCases/Case0/warehouse.csv ../PublicTestCases/Case0/obstacles.csv ../PublicTestCases/Case0/ceiling.csv ../PublicTestCases/Case0/types_of_bays.csv output_case0.csv
+python3 validator.py ../PublicTestCases/Case0/warehouse.csv ../PublicTestCases/Case0/obstacles.csv ../PublicTestCases/Case0/ceiling.csv ../PublicTestCases/Case0/types_of_bays.csv output_case0.csv
+python3 visualize.py ../PublicTestCases/Case0/warehouse.csv ../PublicTestCases/Case0/obstacles.csv ../PublicTestCases/Case0/ceiling.csv ../PublicTestCases/Case0/types_of_bays.csv output_case0.csv viz_case0.html
+```
+
+## Files
+
+| File | Description |
+|------|-------------|
+| `solver.py` | SA solver (~770 lines) — greedy init + simulated annealing |
+| `validator.py` | Standalone constraint checker with Q score calculation |
+| `visualize.py` | Generates interactive HTML visualization (zero dependencies) |
+| `run.sh` | Run solver on a single case |
+| `run_all.sh` | Run solver on all test cases |
 
 ## Algorithm Overview
-
-The solver uses a two-phase approach:
 
 ### Phase 1: Greedy Strip Packing (~40% of time budget)
 
 1. **Sort bay types** by efficiency (`Price/nLoads`, ascending = best first)
-2. **Strip packing**: For each bay type and rotation (0°, 90°), scan the warehouse
-   row by row, placing bays left-to-right with a 50-unit step for finding gaps
-3. **Candidate filling**: After the strip pass, collect all X/Y coordinates from
-   placed bay corners and retry placement at these intersection points
-4. Repeat candidate filling up to 5 passes until no more bays can be added
+2. **Strip packing**: Scan row-by-row, place bays left-to-right with 50-unit step
+3. **Candidate filling**: Collect X/Y coords from placed bay corners, retry placement at these intersection points (up to 5 passes)
 
 ### Phase 2: Simulated Annealing (~60% of time budget)
 
-**Neighbor moves** (weighted random selection):
-| Move | Probability | Description |
-|------|-------------|-------------|
-| Add | 50% | Place a new bay (adjacent to existing, random, or at base coordinates) |
+| Move | Prob | Description |
+|------|------|-------------|
+| Add | 50% | Place a new bay (adjacent to existing → random → base coords) |
 | Remove | 8% | Remove a random bay |
-| Move | 27% | Relocate a bay (adjacent-based or random perturbation ±1000 units) |
-| Swap | 15% | Change a bay's type while keeping its position |
+| Move | 27% | Relocate a bay (adjacent-based or ±1000 perturbation) |
+| Swap | 15% | Change a bay's type at same position |
 
-**Bay type selection** is weighted by `nLoads/Price` (most efficient types selected more often).
+- **Cooling**: Geometric (α=0.99997), reheat after 20k moves without improvement
+- **Bay type selection**: Weighted by `nLoads/Price` (most efficient preferred)
+- **All moves maintain feasibility** — rejected moves undone in O(1)
 
-**Position selection** for Add/Move uses three strategies:
-1. **Adjacent placement** (75%): Try 8 positions touching an existing bay
-2. **Random position** (if adjacent fails): Random coordinates within warehouse
-3. **Base candidates** (fallback): Warehouse vertices and obstacle corners
+## Constraints Enforced
 
-**Cooling schedule**: Geometric cooling with α=0.99997, reheat after 20000 moves without improvement.
+| Constraint | Method |
+|------------|--------|
+| Warehouse containment | Slab decomposition of axis-aligned polygon |
+| Obstacle avoidance | Spatial grid query + strict rect overlap (touching OK) |
+| Bay-bay non-overlap | Same spatial grid + strict overlap check |
+| Ceiling height | **Step function** — each `(x, h)` defines constant height from x onward |
+| Rotation | Only 0°, 90°, 180°, 270° |
 
-All moves maintain feasibility. Rejected moves are undone in O(1) using undo records.
+### Ceiling Model
 
-## SA Parameters
+The ceiling is a **step function** (piecewise constant), not linearly interpolated. Each `(Coord X, Height)` entry defines the ceiling height from that X coordinate until the next breakpoint:
 
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| Initial T | max(1, 0.3 × Q₀) | Scaled to initial quality |
-| Cooling α | 0.99997 | Slow enough for 28s of fine-tuning |
-| Reheat trigger | 20000 moves | Restart from best on stagnation |
-| Reheat T | max(0.5, 0.05 × Q_best) | Warm restart |
-| Time limit | 28s | 2s safety margin |
+```
+Input: (0, 3000), (3000, 2000), (6000, 3000)
 
-## Performance Optimizations
-
-- **Spatial grid**: O(1) amortized overlap queries via grid-based spatial index
-- **Slab decomposition**: Axis-aligned polygon containment in O(slabs) per query
-- **Incremental Q**: Running sums of efficiency and area, no recomputation
-- **Tuple-based data**: All structures use tuples instead of objects for speed
-- **Integer snapping**: Random positions snapped to integers to avoid FP issues
+Height: 3000 ─────┐
+                   │ 2000 ─────┐
+                   └───────────┘ 3000 ──────
+        0        3000        6000
+```
 
 ## Quality Formula
 
@@ -77,31 +114,79 @@ All moves maintain feasibility. Rejected moves are undone in O(1) using undo rec
 Q = (Σ Price/nLoads)² × (Σ Width×Depth) / Area_warehouse
 ```
 
-## Constraints Enforced
+## Performance Optimizations
 
-1. **Warehouse containment**: Bay rectangle fully inside polygon (slab-based check)
-2. **Obstacle avoidance**: No overlap with obstacles (touching allowed, area > ε rejected)
-3. **Bay-bay non-overlap**: No overlap between bays (touching allowed)
-4. **Ceiling**: `min_ceiling(x_span) ≥ Height + Gap` (piecewise linear interpolation)
-5. **Rotation**: Only 0°, 90°, 180°, 270° (axis-aligned)
+- **Spatial grid**: O(1) amortized overlap queries
+- **Slab decomposition**: Axis-aligned polygon containment in O(slabs)
+- **Incremental Q**: Running sums, no recomputation
+- **Tuple-based data**: Tuples + `__slots__` instead of objects
+- **Integer snapping**: Random positions snapped to int to avoid FP issues
 
-## Test Results (Apple M-series, Python 3.12)
+## Validator
 
-| Case | Bays | Quality Q | Iters/s |
-|------|------|-----------|---------|
-| 0 | 34 | ~224M | ~1400 |
-| 1 | 50 | ~1.1B | ~1300 |
-| 2 | 42 | ~729M | ~950 |
-| 3 | 84 | ~1.9B | ~2500 |
+The validator (`validator.py`) independently checks a solution against all constraints:
 
-## Trade-offs for 30s Limit
+```bash
+python3 validator.py ../PublicTestCases/Case0/warehouse.csv \
+  ../PublicTestCases/Case0/obstacles.csv \
+  ../PublicTestCases/Case0/ceiling.csv \
+  ../PublicTestCases/Case0/types_of_bays.csv \
+  output_case0.csv
+```
 
-- **Python over C++**: Easier to iterate on, fewer bugs, ~10× slower but sufficient
-- **Grid cell size**: Tuned to warehouse size / 80 for good balance
-- **Greedy step**: 50 units is small enough to find gaps, large enough to be fast
-- **SA attempts per move**: Limited to 6-8 random tries to keep iteration rate high
-- **No full recomputation**: Incremental everything prevents O(n) per iteration
+**Output example:**
+```
+VALIDATION REPORT
+=================
+Input files:
+  warehouse.csv: OK (6 points)
+  obstacles.csv: OK (3 obstacles)
+  ceiling.csv:   OK (3 points)
+  bays.csv:      OK (6 types)
+  solution.csv:  OK (36 bays placed)
+
+Checking constraints...
+  All bays inside warehouse: PASS
+  No bay overlaps obstacles: PASS
+  No bays overlap each other: PASS
+  Ceiling constraints satisfied: PASS
+
+STATUS: VALID
+  Quality score Q = 263373281.26
+  Bays placed = 36
+```
+
+Exit code: `0` = valid, `1` = invalid.
+
+## Visualizer
+
+The visualizer (`visualize.py`) generates a standalone HTML file with:
+
+- **Interactive canvas**: Pan (drag), zoom (scroll), hover tooltips
+- **Ceiling heatmap**: Color-coded overlay (red=low, green=high) with step transitions
+- **Cross-section chart**: Bottom panel showing ceiling profile as step function with bay height thresholds
+- **Per-bay ceiling margin**: Colored indicators (🟢 comfy, 🟡 OK, 🟠 tight, 🔴 none)
+- **Sidebar**: Display toggles, legend, scrollable bay list
+
+```bash
+python3 visualize.py ../PublicTestCases/Case0/warehouse.csv \
+  ../PublicTestCases/Case0/obstacles.csv \
+  ../PublicTestCases/Case0/ceiling.csv \
+  ../PublicTestCases/Case0/types_of_bays.csv \
+  output_case0.csv viz.html
+```
+
+## Test Results
+
+| Case | Geometry | Bays | Quality Q | Coverage |
+|------|----------|------|-----------|----------|
+| 0 | L-shaped, 3 obstacles, variable ceiling | 36 | 263M | 61.5% |
+| 1 | Square, no obstacles, 2-step ceiling | 45 | 801M | 62.5% |
+| 2 | Square, 1 obstacle, 2-step ceiling | 37 | 520M | 52.1% |
+| 3 | Plus-shaped, 1 obstacle, 3-step ceiling | 82 | 1.78B | 55.4% |
+
+All cases validated ✅, run within 28s on Apple M-series / Python 3.12.
 
 ## Dependencies
 
-Python 3.6+ (standard library only, no external packages).
+**None** — Python 3.6+ standard library only.

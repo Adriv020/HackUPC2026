@@ -30,15 +30,17 @@ PB_TID = 0; PB_X = 1; PB_Y = 2; PB_R = 3; PB_X1 = 4; PB_Y1 = 5; PB_X2 = 6; PB_Y2
 
 
 def make_bay_type(id_, w, d, h, g, nl, pr):
-    th = h + g
+    th = h
     eff = pr / nl if nl > 0 else 1e18
     return (id_, w, d, h, g, nl, pr, th, eff)
 
 
 def bay_footprint(bt, rotation):
+    w = bt[BT_W]
+    d = bt[BT_D] + bt[BT_G]  # gap on depth side (one end), forklift clearance
     if rotation == 0 or rotation == 180:
-        return bt[BT_W], bt[BT_D]
-    return bt[BT_D], bt[BT_W]
+        return w, d
+    return d, w
 
 
 def make_placed_bay(bt, x, y, rotation):
@@ -170,7 +172,7 @@ class Warehouse:
 
 
 # ---------------------------------------------------------------------------
-# Ceiling
+# Ceiling (step function: each (x_i, h_i) means height is h_i from x_i onward)
 # ---------------------------------------------------------------------------
 class Ceiling:
     __slots__ = ('xs', 'hs', 'n')
@@ -181,23 +183,28 @@ class Ceiling:
         self.n = len(pts)
 
     def height_at(self, x):
+        """Step function: find the last breakpoint <= x and return its height."""
         if self.n == 0: return 1e18
-        if x <= self.xs[0]: return self.hs[0]
-        if x >= self.xs[-1]: return self.hs[-1]
+        if x < self.xs[0]: return self.hs[0]
+        # Binary search for rightmost xs[i] <= x
         lo, hi = 0, self.n - 1
-        while lo < hi - 1:
-            mid = (lo + hi) >> 1
+        while lo < hi:
+            mid = (lo + hi + 1) >> 1
             if self.xs[mid] <= x: lo = mid
-            else: hi = mid
-        t = (x - self.xs[lo]) / (self.xs[hi] - self.xs[lo])
-        return self.hs[lo] + t * (self.hs[hi] - self.hs[lo])
+            else: hi = mid - 1
+        return self.hs[lo]
 
     def min_height(self, x1, x2):
+        """Minimum ceiling height over interval [x1, x2]."""
         if self.n == 0: return 1e18
-        h = min(self.height_at(x1), self.height_at(x2))
+        # The min is the minimum of all step values active in [x1, x2].
+        # A step h_i is active in [x1,x2] if its interval [xs[i], xs[i+1]) overlaps [x1,x2].
+        h = self.height_at(x1)  # step active at x1
+        # Also check every breakpoint that falls in (x1, x2] — each starts a new step
         for i in range(self.n):
-            xk = self.xs[i]
-            if x1 < xk < x2:
+            if self.xs[i] > x2: break
+            if self.xs[i] > x1:
+                # This breakpoint is inside the interval, its step could be lower
                 if self.hs[i] < h:
                     h = self.hs[i]
         return h
@@ -319,7 +326,7 @@ class State:
         self.active.add(idx)
         self.grid.insert(idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
         self.sum_eff += bt[BT_EFF]
-        self.sum_area += bt[BT_W] * bt[BT_D]
+        self.sum_area += (pb[PB_X2] - pb[PB_X1]) * (pb[PB_Y2] - pb[PB_Y1])
         return idx
 
     def remove(self, idx):
@@ -328,7 +335,7 @@ class State:
         self.grid.remove(idx, pb[PB_X1], pb[PB_Y1], pb[PB_X2], pb[PB_Y2])
         self.active.discard(idx)
         self.sum_eff -= bt[BT_EFF]
-        self.sum_area -= bt[BT_W] * bt[BT_D]
+        self.sum_area -= (pb[PB_X2] - pb[PB_X1]) * (pb[PB_Y2] - pb[PB_Y1])
         return pb
 
     def snapshot(self):
