@@ -1,192 +1,30 @@
-# Warehouse Bay Placement Solver (Simulated Annealing)
+# Simulated Annealing Solvers
 
-**HackUPC 2026 – Mecalux Challenge**
+This directory contains the suite of Simulated Annealing (SA) based optimization engines built to solve the Mecalux Warehouse Bay Placement challenge. The algorithms search for an optimal layout that minimizes the cost-to-efficiency ratio while satisfying complex spatial constraints (warehouse footprint, ceiling heights, internal obstacles, and non-overlapping restrictions).
 
-## Quick Start
+## 1. Base Orthogonal Solver (`solver.py`)
+The base solver is optimized for speed and strict orthogonal placements.
+- **Orientation Constraints:** Limits bay rotation to strict orthogonal angles (0°, 90°, 180°, and 270°).
+- **Collision Detection:** Utilizes Axis-Aligned Bounding Boxes (AABB) along with a coarse spatial hashing grid to quickly discard overlap checks.
+- **Containment Validation:** Models the warehouse footprint as a slab-decomposed axis-aligned polygon.
+- **Initialization:** Employs a multi-pass, dense greedy packing heuristic that scans the warehouse in strips.
+- **Optimization Strategy:** Standard Simulated Annealing applying four structural operators: `ADD`, `REMOVE`, `MOVE`, and `SWAP` (changing bay types). 
 
-### Solve a case
+## 2. Flexible SAT Solver (`solver_flex.py` / `solver_flex.cpp`)
+The flexible solver lifts the orthogonal constraint, enabling dense geometric packing along angled walls and within irregular footprints.
+- **Orientation Capabilities:** Supports continuous angular rotations beyond 0° and 90° (often snapping to dominant wall angles).
+- **Collision Detection:** Replaces AABB with Oriented Bounding Boxes (OBB) and implements the **Separating Axis Theorem (SAT)** for exact convex polygon overlap detection.
+- **Optimization Strategy:** Implements dynamic window probabilities for the SA moves, actively tuning the ratio of `ADD`, `REMOVE`, `MOVE`, `SWAP`, and `REPACK` operations based on real-time acceptance rates.
+- **Post-Processing:** Applies a localized *Shrink & Shift* micro-optimization pass. It temporarily lifts placed bays to test minor translations (±10 to 100 units) and minor rotations (±3° to ±30°) to squeeze items closer together without altering their type.
 
-```bash
-# Case 0 (L-shaped warehouse, 3 obstacles)
-python3 solver.py ../PublicTestCases/Case0/warehouse.csv ../PublicTestCases/Case0/obstacles.csv ../PublicTestCases/Case0/ceiling.csv ../PublicTestCases/Case0/types_of_bays.csv output_case0.csv
+## 3. Hybrid Orchestrator (`solver_hybrid.py`)
+A parallel execution wrapper designed to exploit the differing strengths of the Orthogonal and SAT models.
+- **Parallel Execution:** Forks two parallel subprocesses: one executing the fast `solver.py` (Ortho) and one executing `solver_flex.py` (SAT).
+- **Telemetry Aggregation:** Both models emit standardized metrics (`[METRIC]`). The orchestrator aggregates these streams in real-time.
+- **Selection:** Upon termination (due to time limit or convergence), it compares the global best quality (Q) metric achieved by each solver and automatically commits the winning configuration to the final output file.
 
-# Case 1 (square, no obstacles)
-python3 solver.py ../PublicTestCases/Case1/warehouse.csv ../PublicTestCases/Case1/obstacles.csv ../PublicTestCases/Case1/ceiling.csv ../PublicTestCases/Case1/types_of_bays.csv output_case1.csv
-
-# Case 3 (plus-shaped, complex)
-python3 solver.py ../PublicTestCases/Case3/warehouse.csv ../PublicTestCases/Case3/obstacles.csv ../PublicTestCases/Case3/ceiling.csv ../PublicTestCases/Case3/types_of_bays.csv output_case3.csv
-```
-
-### Validate a solution
-
-```bash
-# Validate Case 0 output
-python3 validator.py ../PublicTestCases/Case0/warehouse.csv ../PublicTestCases/Case0/obstacles.csv ../PublicTestCases/Case0/ceiling.csv ../PublicTestCases/Case0/types_of_bays.csv output_case0.csv
-
-# Validate Case 3 output
-python3 validator.py ../PublicTestCases/Case3/warehouse.csv ../PublicTestCases/Case3/obstacles.csv ../PublicTestCases/Case3/ceiling.csv ../PublicTestCases/Case3/types_of_bays.csv output_case3.csv
-```
-
-### Visualize a solution (opens in browser)
-
-```bash
-# Visualize Case 0 → opens viz_case0.html
-python3 visualize.py ../PublicTestCases/Case0/warehouse.csv ../PublicTestCases/Case0/obstacles.csv ../PublicTestCases/Case0/ceiling.csv ../PublicTestCases/Case0/types_of_bays.csv output_case0.csv viz_case0.html
-
-# Visualize Case 3
-python3 visualize.py ../PublicTestCases/Case3/warehouse.csv ../PublicTestCases/Case3/obstacles.csv ../PublicTestCases/Case3/ceiling.csv ../PublicTestCases/Case3/types_of_bays.csv output_case3.csv viz_case3.html
-```
-
-### Convenience scripts
-
-```bash
-bash run.sh 0              # Solve Case 0 → output_case0.csv
-bash run.sh 2 my.csv       # Solve Case 2 → my.csv
-bash run_all.sh            # Solve all 4 cases sequentially
-```
-
-### Full pipeline (solve → validate → visualize)
-
-```bash
-# Solve, then validate, then visualize Case 0
-python3 solver.py ../PublicTestCases/Case0/warehouse.csv ../PublicTestCases/Case0/obstacles.csv ../PublicTestCases/Case0/ceiling.csv ../PublicTestCases/Case0/types_of_bays.csv output_case0.csv
-python3 validator.py ../PublicTestCases/Case0/warehouse.csv ../PublicTestCases/Case0/obstacles.csv ../PublicTestCases/Case0/ceiling.csv ../PublicTestCases/Case0/types_of_bays.csv output_case0.csv
-python3 visualize.py ../PublicTestCases/Case0/warehouse.csv ../PublicTestCases/Case0/obstacles.csv ../PublicTestCases/Case0/ceiling.csv ../PublicTestCases/Case0/types_of_bays.csv output_case0.csv viz_case0.html
-```
-
-## Files
-
-| File | Description |
-|------|-------------|
-| `solver.py` | SA solver (~770 lines) — greedy init + simulated annealing |
-| `validator.py` | Standalone constraint checker with Q score calculation |
-| `visualize.py` | Generates interactive HTML visualization (zero dependencies) |
-| `run.sh` | Run solver on a single case |
-| `run_all.sh` | Run solver on all test cases |
-
-## Algorithm Overview
-
-### Phase 1: Greedy Strip Packing (~40% of time budget)
-
-1. **Sort bay types** by efficiency (`Price/nLoads`, ascending = best first)
-2. **Strip packing**: Scan row-by-row, place bays left-to-right with 50-unit step
-3. **Candidate filling**: Collect X/Y coords from placed bay corners, retry placement at these intersection points (up to 5 passes)
-
-### Phase 2: Simulated Annealing (~60% of time budget)
-
-| Move | Prob | Description |
-|------|------|-------------|
-| Add | 50% | Place a new bay (adjacent to existing → random → base coords) |
-| Remove | 8% | Remove a random bay |
-| Move | 27% | Relocate a bay (adjacent-based or ±1000 perturbation) |
-| Swap | 15% | Change a bay's type at same position |
-
-- **Cooling**: Geometric (α=0.99997), reheat after 20k moves without improvement
-- **Bay type selection**: Weighted by `nLoads/Price` (most efficient preferred)
-- **All moves maintain feasibility** — rejected moves undone in O(1)
-
-## Constraints Enforced
-
-| Constraint | Method |
-|------------|--------|
-| Warehouse containment | Slab decomposition of axis-aligned polygon |
-| Obstacle avoidance | Spatial grid query + strict rect overlap (touching OK) |
-| Bay-bay non-overlap | Same spatial grid + strict overlap check |
-| Ceiling height | **Step function** — each `(x, h)` defines constant height from x onward |
-| Rotation | Only 0°, 90°, 180°, 270° |
-
-### Ceiling Model
-
-The ceiling is a **step function** (piecewise constant), not linearly interpolated. Each `(Coord X, Height)` entry defines the ceiling height from that X coordinate until the next breakpoint:
-
-```
-Input: (0, 3000), (3000, 2000), (6000, 3000)
-
-Height: 3000 ─────┐
-                   │ 2000 ─────┐
-                   └───────────┘ 3000 ──────
-        0        3000        6000
-```
-
-## Quality Formula
-
-```
-Q = (Σ Price/nLoads)^(2-(Σ Width×Depth / Area_warehouse))
-```
-
-## Performance Optimizations
-
-- **Spatial grid**: O(1) amortized overlap queries
-- **Slab decomposition**: Axis-aligned polygon containment in O(slabs)
-- **Incremental Q**: Running sums, no recomputation
-- **Tuple-based data**: Tuples + `__slots__` instead of objects
-- **Integer snapping**: Random positions snapped to int to avoid FP issues
-
-## Validator
-
-The validator (`validator.py`) independently checks a solution against all constraints:
-
-```bash
-python3 validator.py ../PublicTestCases/Case0/warehouse.csv \
-  ../PublicTestCases/Case0/obstacles.csv \
-  ../PublicTestCases/Case0/ceiling.csv \
-  ../PublicTestCases/Case0/types_of_bays.csv \
-  output_case0.csv
-```
-
-**Output example:**
-```
-VALIDATION REPORT
-=================
-Input files:
-  warehouse.csv: OK (6 points)
-  obstacles.csv: OK (3 obstacles)
-  ceiling.csv:   OK (3 points)
-  bays.csv:      OK (6 types)
-  solution.csv:  OK (36 bays placed)
-
-Checking constraints...
-  All bays inside warehouse: PASS
-  No bay overlaps obstacles: PASS
-  No bays overlap each other: PASS
-  Ceiling constraints satisfied: PASS
-
-STATUS: VALID
-  Quality score Q = 263373281.26
-  Bays placed = 36
-```
-
-Exit code: `0` = valid, `1` = invalid.
-
-## Visualizer
-
-The visualizer (`visualize.py`) generates a standalone HTML file with:
-
-- **Interactive canvas**: Pan (drag), zoom (scroll), hover tooltips
-- **Ceiling heatmap**: Color-coded overlay (red=low, green=high) with step transitions
-- **Cross-section chart**: Bottom panel showing ceiling profile as step function with bay height thresholds
-- **Per-bay ceiling margin**: Colored indicators (🟢 comfy, 🟡 OK, 🟠 tight, 🔴 none)
-- **Sidebar**: Display toggles, legend, scrollable bay list
-
-```bash
-python3 visualize.py ../PublicTestCases/Case0/warehouse.csv \
-  ../PublicTestCases/Case0/obstacles.csv \
-  ../PublicTestCases/Case0/ceiling.csv \
-  ../PublicTestCases/Case0/types_of_bays.csv \
-  output_case0.csv viz.html
-```
-
-## Test Results
-
-| Case | Geometry | Bays | Quality Q | Coverage |
-|------|----------|------|-----------|----------|
-| 0 | L-shaped, 3 obstacles, variable ceiling | 36 | 263M | 61.5% |
-| 1 | Square, no obstacles, 2-step ceiling | 45 | 801M | 62.5% |
-| 2 | Square, 1 obstacle, 2-step ceiling | 37 | 520M | 52.1% |
-| 3 | Plus-shaped, 1 obstacle, 3-step ceiling | 82 | 1.78B | 55.4% |
-
-All cases validated ✅, run within 28s on Apple M-series / Python 3.12.
-
-## Dependencies
-
-**None** — Python 3.6+ standard library only.
+## 4. Ensemble Orchestrator (`solver_ensemble.py`)
+An aggressively parallel execution engine that scales the Hybrid approach to maximize hardware utilization.
+- **Core Distribution:** Detects the host machine's total logical CPU cores and evenly splits them between multiple Orthogonal and Flexible SAT instances.
+- **Diverse Search:** By launching N/2 instances of each solver type, it benefits from the stochastic nature of the greedy initialization and the simulated annealing random seed, greatly increasing the probability of finding a global minimum compared to a single run.
+- **Aggregation:** Similar to the hybrid solver, it merges real-time telemetry from all parallel threads and dumps the best overall solution on completion.
