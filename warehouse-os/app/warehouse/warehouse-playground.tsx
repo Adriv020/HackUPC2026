@@ -117,6 +117,10 @@ export function WarehousePlayground() {
   const [viewMode, setViewMode] = useState<ViewMode>("3d")
   const [algorithm, setAlgorithm] = useState<"python" | "cpp">("cpp")
 
+  // Splash title card shown on load
+  const [splashPhase, setSplashPhase] = useState<"visible" | "fading" | "hidden">("hidden")
+  const [splashCase, setSplashCase] = useState<string | null>(null)
+
   const allUploaded = Object.values(uploads).every(v => v !== null)
 
   // On mount: if opened via SA dashboard (?preload=CaseN), fetch world data directly
@@ -128,6 +132,7 @@ export function WarehousePlayground() {
     setIsLoading(true)
     setLoadingMessage("Loading 3D scene…")
     setError(null)
+    setSplashCase(preloadCase)
 
     fetch(`http://localhost:8000/api/3dview?case=${encodeURIComponent(preloadCase)}`)
       .then(res => {
@@ -136,9 +141,13 @@ export function WarehousePlayground() {
       })
       .then(world => {
         const { polygon, obstacles, ceilingProfile, placedBays, bayTypes } = mapWorldToScene(world)
-        setParsedData({ polygon, obstacles, ceilingProfile, bayTypes, placedBays })
-        setIntroStartMs(performance.now())
+        // Park the intro animation at t=0 (start position) until the splash clears.
+        // SPLASH_VISIBLE(2200) + FADE(700) = 2900 ms before elapsed goes positive.
+        const splashMs = 2200 + 700
+        setIntroStartMs(performance.now() + splashMs)
         setIntroPhase("intro_orbit")
+        setParsedData({ polygon, obstacles, ceilingProfile, bayTypes, placedBays })
+        setSplashPhase("visible")
         setIsLoading(false)
       })
       .catch(err => {
@@ -146,6 +155,20 @@ export function WarehousePlayground() {
         setIsLoading(false)
       })
   }, [])
+
+  // Splash timing: hold for 2.2 s then fade
+  useEffect(() => {
+    if (splashPhase !== "visible") return
+    const t = setTimeout(() => setSplashPhase("fading"), 2200)
+    return () => clearTimeout(t)
+  }, [splashPhase])
+
+  // After fade transition completes, remove the overlay from the DOM
+  useEffect(() => {
+    if (splashPhase !== "fading") return
+    const t = setTimeout(() => setSplashPhase("hidden"), 700)
+    return () => clearTimeout(t)
+  }, [splashPhase])
 
   // Send CSVs to backend, run SA solver, return world JSON directly
   useEffect(() => {
@@ -253,6 +276,66 @@ export function WarehousePlayground() {
             viewMode={viewMode}
           />
         </div>
+
+        {/* ── Splash title card ────────────────────────────────────────────── */}
+        {splashPhase !== "hidden" && (
+          <>
+            <style>{`
+              @keyframes splashWordIn {
+                from { opacity: 0; transform: translateY(18px) scale(0.97); }
+                to   { opacity: 1; transform: translateY(0)    scale(1);    }
+              }
+              @keyframes splashSubIn {
+                from { opacity: 0; }
+                to   { opacity: 1; }
+              }
+            `}</style>
+            <div
+              className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-8"
+              style={{
+                background: "linear-gradient(160deg, #090b10 0%, #0e1420 55%, #0f1117 100%)",
+                opacity: splashPhase === "fading" ? 0 : 1,
+                transition: "opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1)",
+                pointerEvents: splashPhase === "fading" ? "none" : "auto",
+              }}
+            >
+              <div style={{ textAlign: "center" }}>
+                <h1
+                  style={{
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: "clamp(3.5rem, 11vw, 9rem)",
+                    fontWeight: 800,
+                    letterSpacing: "-0.04em",
+                    lineHeight: 1,
+                    background: "linear-gradient(135deg, #ffffff 40%, rgba(165,180,252,0.85) 100%)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    animation: "splashWordIn 0.65s cubic-bezier(0.22,1,0.36,1) both",
+                  }}
+                >
+                  WarehouseOS
+                </h1>
+                {splashCase && (
+                  <p
+                    style={{
+                      marginTop: "1.25rem",
+                      color: "rgba(255,255,255,0.28)",
+                      fontSize: "0.8rem",
+                      letterSpacing: "0.22em",
+                      textTransform: "uppercase",
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 500,
+                      animation: "splashSubIn 0.5s 0.4s ease both",
+                    }}
+                  >
+                    {splashCase}
+                  </p>
+                )}
+              </div>
+
+            </div>
+          </>
+        )}
 
         {/* ── Status chip + Exterior Controls (unified right panel) ─────────── */}
         <div className="pointer-events-none absolute top-4 right-4 z-20 flex flex-col items-end gap-2">

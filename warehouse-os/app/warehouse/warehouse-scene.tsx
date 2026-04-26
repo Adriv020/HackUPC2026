@@ -39,7 +39,7 @@ function IntroCameraController({
   useFrame(({ camera }) => {
     if (doneRef.current) return
     const elapsed = performance.now() - introStartMs
-    const rawT = Math.min(elapsed / INTRO_DURATION_MS, 1)
+    const rawT = Math.max(0, Math.min(elapsed / INTRO_DURATION_MS, 1))
     const easedT = easeOutQuint(rawT)
     const startX = cx + maxDim * 3.2
     const startY = maxDim * 2.8
