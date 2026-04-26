@@ -313,6 +313,7 @@ HTML = """<!DOCTYPE html>
           <label for="modelSelect" style="font-size: 12px; color: #9ca3af; margin-bottom: 4px;">Solver Engine:</label>
           <select id="modelSelect" style="background: #13151f; color: #e0e0e0; border: 1px solid rgba(99, 102, 241, 0.3); padding: 6px 10px; border-radius: 4px; outline: none; font-family: inherit; font-size: 13px; cursor: pointer;">
             <option value="solver.py">Orthogonal (solver.py)</option>
+            <option value="solver_flex">Continuous SAT C++ (solver_flex)</option>
             <option value="solver_flex.py">Continuous SAT (solver_flex.py)</option>
             <option value="solver_hybrid.py">Hybrid (Ortho + SAT) (solver_hybrid.py)</option>
             <option value="solver_ensemble.py">Ensemble All-Cores (solver_ensemble.py)</option>
@@ -672,8 +673,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             out_csv = f"output_{case_name.lower()}.csv"
 
             # Use unbuffered output (-u) for real-time streaming
-            cmd = ["python3", "-u", model_name, p_wh, p_obs, p_ceil, p_bays, out_csv]
-            
+            # Dynamic execution based on extension
+            if model_name.endswith('.py'):
+                cmd = ["python3", "-u", model_name, p_wh, p_obs, p_ceil, p_bays, out_csv]
+            else:
+                cmd = [f"./{model_name}", p_wh, p_obs, p_ceil, p_bays, out_csv]     
+                   
             try:
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
                 for line in proc.stdout:
