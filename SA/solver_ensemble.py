@@ -64,7 +64,7 @@ def main():
     for i in range(num_ortho):
         instances.append((f'Ortho-{i}', 'solver.py'))
     for i in range(num_sat):
-        instances.append((f'SAT-{i}', './solver_flex'))
+        instances.append((f'SAT-{i}', 'solver_flex.py'))
 
     procs = {}
     threads = []
@@ -76,10 +76,7 @@ def main():
     
     for name, script in instances:
         tmp_out = f"{final_out}_{name.lower()}_{pid}.tmp.csv"
-        if script.endswith('.py'):
-            cmd = ["python3", "-u", script] + args + [tmp_out]
-        else:
-            cmd = [script] + args + [tmp_out]
+        cmd = ["python3", "-u", script] + args + [tmp_out]
         
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
