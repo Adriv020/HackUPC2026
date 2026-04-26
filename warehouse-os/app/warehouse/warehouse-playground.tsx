@@ -254,21 +254,6 @@ export function WarehousePlayground() {
           />
         </div>
 
-        {/* ── Back button ─────────────────────────────────────────────────── */}
-        <div className="pointer-events-auto absolute top-4 left-4 z-20">
-          <button
-            onClick={handleReset}
-            className="rounded-full border px-4 py-2 text-sm backdrop-blur transition-colors hover:bg-white/80"
-            style={{
-              borderColor: "rgba(15,23,42,0.15)",
-              background: "rgba(255,255,255,0.6)",
-              color: "rgba(15,23,42,0.8)",
-            }}
-          >
-            ← Upload New Files
-          </button>
-        </div>
-
         {/* ── Status chip + Exterior Controls (unified right panel) ─────────── */}
         <div className="pointer-events-none absolute top-4 right-4 z-20 flex flex-col items-end gap-2">
           <div
