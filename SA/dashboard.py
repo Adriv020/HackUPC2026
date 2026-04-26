@@ -300,6 +300,12 @@ HTML = """<!DOCTYPE html>
     <div class="case-list" id="caseList">
       <!-- Populated via JS -->
     </div>
+    <div class="sidebar-footer" style="padding: 16px; border-top: 1px solid rgba(99, 102, 241, 0.15); margin-top: auto; flex-shrink: 0;">
+      <button class="btn btn-validate" style="width: 100%; justify-content: center; font-size: 13px;" onclick="document.getElementById('folderInput').click()">
+        <span>📁</span> Upload Case Folder
+      </button>
+      <input type="file" id="folderInput" webkitdirectory directory multiple style="display: none;" onchange="handleFolderUpload(event)">
+    </div>
   </div>
   
   <div class="content">
@@ -443,8 +449,34 @@ async function loadCases() {
     cases.forEach(name => {
       const div = document.createElement('div');
       div.className = 'case-item';
-      div.innerHTML = `📁 ${name}`;
-      div.onclick = () => selectCase(name, div);
+      
+      const label = document.createElement('span');
+      label.style.flex = "1";
+      label.innerHTML = `📁 ${name}`;
+      label.onclick = () => selectCase(name, div);
+      div.appendChild(label);
+      
+      const caseNumMatch = name.match(/^Case(\d+)$/);
+      const isProtected = caseNumMatch && parseInt(caseNumMatch[1]) >= 0 && parseInt(caseNumMatch[1]) <= 7;
+      
+      if (!isProtected) {
+        const delBtn = document.createElement('button');
+        delBtn.innerHTML = '🗑️';
+        delBtn.style.background = 'transparent';
+        delBtn.style.border = 'none';
+        delBtn.style.cursor = 'pointer';
+        delBtn.style.fontSize = '14px';
+        delBtn.style.opacity = '0.5';
+        delBtn.title = 'Delete Case';
+        delBtn.onmouseover = () => delBtn.style.opacity = '1';
+        delBtn.onmouseout = () => delBtn.style.opacity = '0.5';
+        delBtn.onclick = (e) => {
+          e.stopPropagation();
+          deleteCase(name);
+        };
+        div.appendChild(delBtn);
+      }
+      
       list.appendChild(div);
     });
     
@@ -454,6 +486,93 @@ async function loadCases() {
   } catch (err) {
     appendConsole(`Error loading cases: ${err}\\n`, 'red');
   }
+}
+
+async function deleteCase(name) {
+  if (!confirm(`Are you sure you want to delete ${name}?`)) return;
+  try {
+    const res = await fetch(`/api/cases?case=${name}`, { method: 'DELETE' });
+    if (res.ok) {
+      appendConsole(`\\n✓ Deleted case ${name}.\\n`, '#10b981');
+      if (currentCase === name) {
+        currentCase = null;
+        document.getElementById('currentCaseName').textContent = 'Select a Case';
+        document.getElementById('btnSolve').disabled = true;
+        document.getElementById('btnValidate').disabled = true;
+        document.getElementById('btnVisualize').disabled = true;
+        document.getElementById('btn3D').disabled = true;
+      }
+      loadCases();
+    } else {
+      const err = await res.text();
+      appendConsole(`\\nError deleting case: ${err}\\n`, '#ef4444');
+    }
+  } catch (err) {
+    appendConsole(`\\nError deleting case: ${err}\\n`, '#ef4444');
+  }
+}
+
+async function handleFolderUpload(event) {
+  const files = event.target.files;
+  if (!files || files.length === 0) return;
+  
+  const fileContents = {};
+  const required = ['warehouse.csv', 'obstacles.csv', 'ceiling.csv', 'types_of_bays.csv'];
+  let folderName = "";
+  
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (required.includes(file.name)) {
+      if (!folderName && file.webkitRelativePath) {
+        folderName = file.webkitRelativePath.split('/')[0];
+      }
+      fileContents[file.name] = await file.text();
+    }
+  }
+  
+  const found = Object.keys(fileContents);
+  const missing = required.filter(r => !found.includes(r));
+  
+  if (missing.length > 0) {
+    alert(`The selected folder is missing required files:\\n${missing.join(', ')}`);
+    event.target.value = '';
+    return;
+  }
+  
+  let caseName = prompt("Enter a name for the new test case (e.g., Case8):", folderName || "CaseNew");
+  if (!caseName) {
+    event.target.value = '';
+    return;
+  }
+  
+  caseName = caseName.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!caseName) {
+    event.target.value = '';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseName: caseName,
+        files: fileContents
+      })
+    });
+    
+    if (res.ok) {
+      appendConsole(`\\n✓ Uploaded new case ${caseName}.\\n`, '#10b981');
+      loadCases();
+    } else {
+      const err = await res.text();
+      appendConsole(`\\nError uploading case: ${err}\\n`, '#ef4444');
+    }
+  } catch (err) {
+    appendConsole(`\\nError uploading case: ${err}\\n`, '#ef4444');
+  }
+  
+  event.target.value = '';
 }
 
 function selectCase(name, el) {
@@ -640,9 +759,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if path == '/api/cases':
             cases = []
             if os.path.exists(PUBLIC_CASES_DIR):
-                cases = [d for d in os.listdir(PUBLIC_CASES_DIR) if os.path.isdir(os.path.join(PUBLIC_CASES_DIR, d)) and d.startswith('Case')]
-                # Sort logically (Case0, Case1, Case2, ...)
-                cases.sort(key=lambda x: int(x.replace('Case', '')) if x.replace('Case', '').isdigit() else x)
+                cases = [d for d in os.listdir(PUBLIC_CASES_DIR) if os.path.isdir(os.path.join(PUBLIC_CASES_DIR, d))]
+                # Sort logically (Case0, Case1, Case2, ...) then alphabetically
+                def sort_key(x):
+                    if x.startswith('Case') and x[4:].isdigit():
+                        return (0, int(x[4:]))
+                    return (1, x)
+                cases.sort(key=sort_key)
             
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -796,6 +919,93 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         # Fallback to SimpleHTTPRequestHandler for serving static files
         return super().do_GET()
+
+    def do_POST(self):
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+
+        if path == '/api/upload':
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                case_name = data.get('caseName')
+                files = data.get('files')
+                
+                if not case_name or not files:
+                    self.send_response(400)
+                    self.end_headers()
+                    self.wfile.write(b"Missing caseName or files")
+                    return
+                
+                required_files = {'warehouse.csv', 'obstacles.csv', 'ceiling.csv', 'types_of_bays.csv'}
+                if not required_files.issubset(set(files.keys())):
+                    self.send_response(400)
+                    self.end_headers()
+                    self.wfile.write(b"Missing required csv files")
+                    return
+                    
+                target_dir = os.path.join(PUBLIC_CASES_DIR, case_name)
+                os.makedirs(target_dir, exist_ok=True)
+                
+                for filename, content in files.items():
+                    if filename in required_files:
+                        with open(os.path.join(target_dir, filename), 'w') as f:
+                            f.write(content)
+                            
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"Uploaded")
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(str(e).encode('utf-8'))
+            return
+            
+        self.send_response(404)
+        self.end_headers()
+
+    def do_DELETE(self):
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+        query = urllib.parse.parse_qs(parsed_url.query)
+
+        if path == '/api/cases':
+            case_name = query.get('case', [''])[0]
+            if not case_name:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b"No case specified")
+                return
+            
+            # Protected check
+            if case_name.startswith('Case'):
+                try:
+                    num = int(case_name[4:])
+                    if 0 <= num <= 7:
+                        self.send_response(403)
+                        self.end_headers()
+                        self.wfile.write(b"Cannot delete protected case")
+                        return
+                except ValueError:
+                    pass
+
+            target_dir = os.path.join(PUBLIC_CASES_DIR, case_name)
+            if os.path.exists(target_dir) and os.path.isdir(target_dir):
+                import shutil
+                shutil.rmtree(target_dir)
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"Deleted")
+            else:
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(b"Not found")
+            return
+
+        self.send_response(404)
+        self.end_headers()
 
 def broken_pipe_error_classes():
     try:
