@@ -64,7 +64,7 @@ def main():
     for i in range(num_ortho):
         instances.append((f'Ortho-{i}', 'solver.py'))
     for i in range(num_sat):
-        instances.append((f'SAT-{i}', './solver_flex'))
+        instances.append((f'SAT-{i}', 'solver_flex.py'))
 
     procs = {}
     threads = []

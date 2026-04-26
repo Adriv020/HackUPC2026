@@ -49,7 +49,7 @@ def main():
 
     solvers = {
         'Ortho': 'solver.py',
-        'SAT': './solver_flex'
+        'SAT': 'solver_flex.py'
     }
 
     procs = {}
