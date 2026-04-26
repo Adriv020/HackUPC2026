@@ -24,9 +24,9 @@ HTML = """<!DOCTYPE html>
 <title>Warehouse App Dashboard</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
-  
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  
+
   body {
     font-family: 'Inter', sans-serif;
     background: #0f1117;
@@ -36,7 +36,7 @@ HTML = """<!DOCTYPE html>
     flex-direction: column;
     overflow: hidden;
   }
-  
+
   .header {
     background: linear-gradient(135deg, #1a1d2e 0%, #0f1117 100%);
     border-bottom: 1px solid rgba(99, 102, 241, 0.2);
@@ -46,7 +46,7 @@ HTML = """<!DOCTYPE html>
     justify-content: space-between;
     flex-shrink: 0;
   }
-  
+
   .header h1 {
     font-size: 20px;
     font-weight: 700;
@@ -54,13 +54,13 @@ HTML = """<!DOCTYPE html>
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
   }
-  
+
   .main {
     display: flex;
     flex: 1;
     min-height: 0;
   }
-  
+
   .sidebar {
     width: 260px;
     background: #13151f;
@@ -69,7 +69,7 @@ HTML = """<!DOCTYPE html>
     flex-direction: column;
     flex-shrink: 0;
   }
-  
+
   .sidebar-header {
     padding: 16px;
     font-size: 13px;
@@ -79,7 +79,7 @@ HTML = """<!DOCTYPE html>
     letter-spacing: 0.5px;
     border-bottom: 1px solid rgba(99, 102, 241, 0.1);
   }
-  
+
   .case-list {
     overflow-y: auto;
     flex: 1;
@@ -88,7 +88,7 @@ HTML = """<!DOCTYPE html>
     flex-direction: column;
     gap: 4px;
   }
-  
+
   .case-item {
     padding: 10px 12px;
     border-radius: 6px;
@@ -100,19 +100,19 @@ HTML = """<!DOCTYPE html>
     align-items: center;
     gap: 8px;
   }
-  
+
   .case-item:hover {
     background: rgba(99, 102, 241, 0.1);
     color: #e0e0e0;
   }
-  
+
   .case-item.active {
     background: rgba(99, 102, 241, 0.2);
     color: #818cf8;
     font-weight: 500;
     border-left: 3px solid #6366f1;
   }
-  
+
   .content {
     flex: 1;
     display: flex;
@@ -121,12 +121,12 @@ HTML = """<!DOCTYPE html>
     gap: 20px;
     overflow: hidden;
   }
-  
+
   .actions {
     display: flex;
     gap: 12px;
   }
-  
+
   .btn {
     padding: 10px 20px;
     border-radius: 6px;
@@ -141,39 +141,39 @@ HTML = """<!DOCTYPE html>
     gap: 8px;
     outline: none;
   }
-  
+
   .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
-  
+
   .btn-solve {
     background: linear-gradient(135deg, #10b981, #059669);
     color: white;
   }
-  
+
   .btn-solve:hover:not(:disabled) {
     box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
   }
-  
+
   .btn-validate {
     background: linear-gradient(135deg, #6366f1, #4f46e5);
     color: white;
   }
-  
+
   .btn-validate:hover:not(:disabled) {
     box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
   }
-  
+
   .btn-visualize {
     background: linear-gradient(135deg, #f59e0b, #d97706);
     color: white;
   }
-  
+
   .btn-visualize:hover:not(:disabled) {
     box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
   }
-  
+
   .console-panel {
     flex: 1;
     background: #0a0c14;
@@ -183,7 +183,7 @@ HTML = """<!DOCTYPE html>
     flex-direction: column;
     overflow: hidden;
   }
-  
+
   .console-header {
     background: #13151f;
     padding: 10px 16px;
@@ -193,7 +193,7 @@ HTML = """<!DOCTYPE html>
     display: flex;
     justify-content: space-between;
   }
-  
+
   pre {
     flex: 1;
     padding: 16px;
@@ -206,7 +206,7 @@ HTML = """<!DOCTYPE html>
     white-space: pre-wrap;
     word-break: break-all;
   }
-  
+
   .loading {
     display: inline-block;
     width: 14px;
@@ -216,11 +216,11 @@ HTML = """<!DOCTYPE html>
     border-top-color: #fff;
     animation: spin 1s ease-in-out infinite;
   }
-  
+
   @keyframes spin {
     to { transform: rotate(360deg); }
   }
-  
+
   .badge {
     font-size: 10px;
     padding: 2px 6px;
@@ -228,7 +228,7 @@ HTML = """<!DOCTYPE html>
     background: rgba(99, 102, 241, 0.2);
     color: #818cf8;
   }
-  
+
   .graph-panel {
     background: #0a0c14;
     border: 1px solid rgba(99, 102, 241, 0.2);
@@ -256,7 +256,7 @@ HTML = """<!DOCTYPE html>
       <!-- Populated via JS -->
     </div>
   </div>
-  
+
   <div class="content">
     <div style="display: flex; justify-content: space-between; align-items: flex-end;">
       <div style="display: flex; gap: 24px;">
@@ -269,6 +269,7 @@ HTML = """<!DOCTYPE html>
           <select id="modelSelect" style="background: #13151f; color: #e0e0e0; border: 1px solid rgba(99, 102, 241, 0.3); padding: 6px 10px; border-radius: 4px; outline: none; font-family: inherit; font-size: 13px; cursor: pointer;">
             <option value="solver.py">Orthogonal (solver.py)</option>
             <option value="solver_flex.py">Continuous SAT (solver_flex.py)</option>
+            <option value="solver_flex">Continuous SAT C++ (solver_flex)</option>
             <option value="solver_hybrid.py">Hybrid (Ortho + SAT) (solver_hybrid.py)</option>
             <option value="solver_ensemble.py">Ensemble All-Cores (solver_ensemble.py)</option>
 
@@ -287,7 +288,7 @@ HTML = """<!DOCTYPE html>
         </button>
       </div>
     </div>
-    
+
     <div class="console-panel">
       <div class="console-header">
         <span id="consoleStatus">Console Output</span>
@@ -300,7 +301,7 @@ HTML = """<!DOCTYPE html>
       </div>
       <pre id="console"></pre>
     </div>
-    
+
     <div class="graph-panel" id="graphPanel">
         <canvas id="saChart"></canvas>
     </div>
@@ -324,7 +325,7 @@ function initChart() {
     chartQData = [];
     chartBestQData = [];
     chartTempData = [];
-    
+
     const ctx = document.getElementById('saChart').getContext('2d');
     saChart = new Chart(ctx, {
         type: 'line',
@@ -376,10 +377,10 @@ async function loadCases() {
   try {
     const res = await fetch('/api/cases');
     const cases = await res.json();
-    
+
     const list = document.getElementById('caseList');
     list.innerHTML = '';
-    
+
     cases.forEach(name => {
       const div = document.createElement('div');
       div.className = 'case-item';
@@ -387,7 +388,7 @@ async function loadCases() {
       div.onclick = () => selectCase(name, div);
       list.appendChild(div);
     });
-    
+
     if (cases.length > 0) {
       selectCase(cases[0], list.children[0]);
     }
@@ -399,13 +400,13 @@ async function loadCases() {
 function selectCase(name, el) {
   document.querySelectorAll('.case-item').forEach(d => d.classList.remove('active'));
   if (el) el.classList.add('active');
-  
+
   currentCase = name;
   document.getElementById('currentCaseName').textContent = name;
   document.getElementById('btnSolve').disabled = false;
   document.getElementById('btnValidate').disabled = false;
   document.getElementById('btnVisualize').disabled = false;
-  
+
   if (eventSource) {
     eventSource.close();
     eventSource = null;
@@ -433,20 +434,20 @@ function resetButtons() {
 
 function runSolve() {
   if (!currentCase) return;
-  
+
   if (eventSource) eventSource.close();
-  
+
   document.getElementById('console').textContent = '';
   document.getElementById('btnSolve').disabled = true;
   document.getElementById('lblSolve').innerHTML = '<span class="loading"></span> Solving...';
   document.getElementById('btnValidate').disabled = true;
   document.getElementById('btnVisualize').disabled = true;
   document.getElementById('consoleStatus').textContent = `Running Simulated Annealing on ${currentCase}...`;
-  
+
   const selectedModel = document.getElementById('modelSelect').value;
   const showGraph = document.getElementById('showGraph').checked;
   const graphPanel = document.getElementById('graphPanel');
-  
+
   if (showGraph) {
       graphPanel.style.display = 'flex';
       initChart();
@@ -455,7 +456,7 @@ function runSolve() {
   }
 
   eventSource = new EventSource(`/api/solve?case=${currentCase}&model=${selectedModel}`);
-  
+
   eventSource.onmessage = function(e) {
     if (e.data === 'DONE') {
       eventSource.close();
@@ -485,7 +486,7 @@ function runSolve() {
       appendConsole(e.data + '\\n');
     }
   };
-  
+
   eventSource.onerror = function() {
     eventSource.close();
     eventSource = null;
@@ -496,14 +497,14 @@ function runSolve() {
 
 async function runValidate() {
   if (!currentCase) return;
-  
+
   document.getElementById('btnValidate').disabled = true;
   document.getElementById('lblValidate').innerHTML = '<span class="loading"></span> Validating...';
   document.getElementById('btnSolve').disabled = true;
   document.getElementById('btnVisualize').disabled = true;
   document.getElementById('consoleStatus').textContent = `Validating output for ${currentCase}...`;
   document.getElementById('console').textContent = '';
-  
+
   try {
     const res = await fetch(`/api/validate?case=${currentCase}`);
     const text = await res.text();
@@ -517,10 +518,10 @@ async function runValidate() {
 
 async function runVisualize() {
   if (!currentCase) return;
-  
+
   document.getElementById('btnVisualize').disabled = true;
   document.getElementById('lblVisualize').innerHTML = '<span class="loading"></span> Opening...';
-  
+
   try {
     // This endpoint runs visualize.py which automatically spawns the browser
     const res = await fetch(`/api/visualize?case=${currentCase}`);
@@ -540,6 +541,7 @@ window.onload = loadCases;
 </body>
 </html>
 """
+
 
 class DashboardHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
@@ -563,10 +565,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if path == '/api/cases':
             cases = []
             if os.path.exists(PUBLIC_CASES_DIR):
-                cases = [d for d in os.listdir(PUBLIC_CASES_DIR) if os.path.isdir(os.path.join(PUBLIC_CASES_DIR, d)) and d.startswith('Case')]
+                cases = [d for d in os.listdir(PUBLIC_CASES_DIR) if
+                         os.path.isdir(os.path.join(PUBLIC_CASES_DIR, d)) and d.startswith('Case')]
                 # Sort logically (Case0, Case1, Case2, ...)
                 cases.sort(key=lambda x: int(x.replace('Case', '')) if x.replace('Case', '').isdigit() else x)
-            
+
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
@@ -576,7 +579,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if path == '/api/solve':
             case_name = query.get('case', [''])[0]
             model_name = query.get('model', ['solver.py'])[0]
-            if model_name not in ['solver.py', 'solver_flex.py', 'solver_hybrid.py', 'solver_ensemble.py']:
+            if model_name not in ['solver.py', 'solver_flex.py', 'solver_flex', 'solver_hybrid.py',
+                                  'solver_ensemble.py']:
                 model_name = 'solver.py'
             if not case_name:
                 self.send_response(400)
@@ -595,9 +599,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             p_bays = os.path.join(PUBLIC_CASES_DIR, case_name, 'types_of_bays.csv')
             out_csv = f"output_{case_name.lower()}.csv"
 
-            # Use unbuffered output (-u) for real-time streaming
-            cmd = ["python3", "-u", model_name, p_wh, p_obs, p_ceil, p_bays, out_csv]
-            
+            # Dynamic execution based on extension
+            if model_name.endswith('.py'):
+                cmd = ["python3", "-u", model_name, p_wh, p_obs, p_ceil, p_bays, out_csv]
+            else:
+                cmd = [f"./{model_name}", p_wh, p_obs, p_ceil, p_bays, out_csv]
+
             try:
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
                 for line in proc.stdout:
@@ -616,14 +623,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 if 'proc' in locals():
                     proc.kill()
             return
-            
+
         if path == '/api/validate':
             case_name = query.get('case', [''])[0]
             if not case_name:
                 self.send_response(400)
                 self.end_headers()
                 return
-            
+
             p_wh = os.path.join(PUBLIC_CASES_DIR, case_name, 'warehouse.csv')
             p_obs = os.path.join(PUBLIC_CASES_DIR, case_name, 'obstacles.csv')
             p_ceil = os.path.join(PUBLIC_CASES_DIR, case_name, 'ceiling.csv')
@@ -634,25 +641,26 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header('Content-type', 'text/plain; charset=utf-8')
                 self.end_headers()
-                self.wfile.write(f"Error: Solution file {out_csv} not found.\nPlease run Train (Solve) first.".encode('utf-8'))
+                self.wfile.write(
+                    f"Error: Solution file {out_csv} not found.\nPlease run Train (Solve) first.".encode('utf-8'))
                 return
 
             cmd = ["python3", "validator.py", p_wh, p_obs, p_ceil, p_bays, out_csv]
             proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            
+
             self.send_response(200)
             self.send_header('Content-type', 'text/plain; charset=utf-8')
             self.end_headers()
             self.wfile.write(proc.stdout.encode('utf-8'))
             return
-            
+
         if path == '/api/visualize':
             case_name = query.get('case', [''])[0]
             if not case_name:
                 self.send_response(400)
                 self.end_headers()
                 return
-            
+
             p_wh = os.path.join(PUBLIC_CASES_DIR, case_name, 'warehouse.csv')
             p_obs = os.path.join(PUBLIC_CASES_DIR, case_name, 'obstacles.csv')
             p_ceil = os.path.join(PUBLIC_CASES_DIR, case_name, 'ceiling.csv')
@@ -664,12 +672,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header('Content-type', 'text/plain; charset=utf-8')
                 self.end_headers()
-                self.wfile.write(f"Error: Solution file {out_csv} not found.\nPlease run Train (Solve) first.".encode('utf-8'))
+                self.wfile.write(
+                    f"Error: Solution file {out_csv} not found.\nPlease run Train (Solve) first.".encode('utf-8'))
                 return
 
             cmd = ["python3", "visualize.py", p_wh, p_obs, p_ceil, p_bays, out_csv, out_html]
             proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            
+
             self.send_response(200)
             self.send_header('Content-type', 'text/plain; charset=utf-8')
             self.end_headers()
@@ -679,30 +688,33 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         # Fallback to SimpleHTTPRequestHandler for serving static files
         return super().do_GET()
 
+
 def broken_pipe_error_classes():
     try:
         return (BrokenPipeError, ConnectionResetError)
     except NameError:
         return Exception
 
+
 def run_server():
     server_address = ('', PORT)
     httpd = HTTPServer(server_address, DashboardHandler)
     print(f"Dashboard server running at http://localhost:{PORT}")
     print("Press Ctrl+C to stop.")
-    
+
     # Automatically open browser
     def open_browser():
         webbrowser.open(f"http://localhost:{PORT}")
-        
+
     threading.Timer(0.5, open_browser).start()
-    
+
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\nShutting down server.")
         httpd.server_close()
         sys.exit(0)
+
 
 if __name__ == '__main__':
     run_server()
