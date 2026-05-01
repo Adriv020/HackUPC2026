@@ -295,18 +295,27 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
 
         bt = bay_types[tid]
         w = bt['width']
-        d = bt['depth'] + bt['gap']
-        corners = get_obb_corners(b['x'], b['y'], w, d, rot)
-        x1, y1, x2, y2 = aabb_from_corners(corners)
-        bay_rects.append((x1, y1, x2, y2, corners, b, bt, i))
+        d_full = bt['depth'] + bt['gap']
+        d_bay = bt['depth']
+        
+        full_corners = get_obb_corners(b['x'], b['y'], w, d_full, rot)
+        bay_corners = get_obb_corners(b['x'], b['y'], w, d_bay, rot)
+        
+        x1, y1, x2, y2 = aabb_from_corners(full_corners)
+        bay_rects.append({
+            'full_corners': full_corners,
+            'bay_corners': bay_corners,
+            'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
+            'b': b, 'bt': bt, 'idx': i
+        })
 
     # --- Constraint 1: Warehouse boundary ---
     wh_passes = 0
-    for x1, y1, x2, y2, corners, b, bt, idx in bay_rects:
-        ok, corner = obb_inside(corners, wh_verts)
+    for br in bay_rects:
+        ok, corner = obb_inside(br['full_corners'], wh_verts)
         if not ok:
             errors.append(
-                f"Bay #{idx} (Id={b['typeId']} at ({b['x']:.1f}, {b['y']:.1f}) rot {b['rotation']}): "
+                f"Bay #{br['idx']} (Id={br['b']['typeId']} at ({br['b']['x']:.1f}, {br['b']['y']:.1f}) rot {br['b']['rotation']}): "
                 f"outside warehouse — corner ({corner[0]:.1f}, {corner[1]:.1f}) not inside polygon"
             )
         else:
@@ -319,12 +328,12 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
 
     # --- Constraint 2: Obstacle avoidance ---
     obs_violations = 0
-    for x1, y1, x2, y2, corners, b, bt, idx in bay_rects:
+    for br in bay_rects:
         for oi, (ox1, oy1, ox2, oy2) in enumerate(obs_rects):
             obs_c = ((ox1, oy1), (ox2, oy1), (ox2, oy2), (ox1, oy2))
-            if sat_overlap(corners, obs_c):
+            if sat_overlap(br['full_corners'], obs_c):
                 errors.append(
-                    f"Bay #{idx} (Id={b['typeId']} at ({b['x']:.1f}, {b['y']:.1f}) rot {b['rotation']}): "
+                    f"Bay #{br['idx']} (Id={br['b']['typeId']} at ({br['b']['x']:.1f}, {br['b']['y']:.1f}) rot {br['b']['rotation']}): "
                     f"overlaps obstacle {oi}"
                 )
                 obs_violations += 1
@@ -338,12 +347,14 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
     bay_violations = 0
     n = len(bay_rects)
     for i in range(n):
-        x1a, y1a, x2a, y2a, ca, ba, bta, idxa = bay_rects[i]
+        bra = bay_rects[i]
         for j in range(i + 1, n):
-            x1b, y1b, x2b, y2b, cb, bb, btb, idxb = bay_rects[j]
-            if sat_overlap(ca, cb):
+            brb = bay_rects[j]
+            # Gaps can overlap, but rack area cannot overlap any part of another bay
+            if sat_overlap(bra['bay_corners'], brb['full_corners']) or \
+               sat_overlap(brb['bay_corners'], bra['full_corners']):
                 errors.append(
-                    f"Bay #{idxa} overlaps Bay #{idxb}"
+                    f"Bay #{bra['idx']} overlaps Bay #{brb['idx']} (non-gap areas)"
                 )
                 bay_violations += 1
 
@@ -354,14 +365,14 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
 
     # --- Constraint 4: Ceiling height ---
     ceil_violations = 0
-    for x1, y1, x2, y2, corners, b, bt, idx in bay_rects:
-        min_h = min_ceiling(ceil_pts, x1, x2)
-        req_h = bt['height']
+    for br in bay_rects:
+        min_h = min_ceiling(ceil_pts, br['x1'], br['x2'])
+        req_h = br['bt']['height']
         if min_h < req_h - EPS:
             errors.append(
-                f"Bay #{idx} (Id={b['typeId']} at ({b['x']:.1f}, {b['y']:.1f}) rot {b['rotation']}): "
+                f"Bay #{br['idx']} (Id={br['b']['typeId']} at ({br['b']['x']:.1f}, {br['b']['y']:.1f}) rot {br['b']['rotation']}): "
                 f"ceiling too low — need {req_h:.0f}, have {min_h:.0f} "
-                f"(x span [{x1:.0f}, {x2:.0f}])"
+                f"(x span [{br['x1']:.0f}, {br['x2']:.0f}])"
             )
             ceil_violations += 1
 
@@ -385,10 +396,10 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
     sum_price = 0.0
     sum_loads = 0
     sum_area = 0.0
-    for x1, y1, x2, y2, corners, b, bt, idx in bay_rects:
-        sum_price += bt['price']
-        sum_loads += bt['nLoads']
-        sum_area += bt['width'] * bt['depth']
+    for br in bay_rects:
+        sum_price += br['bt']['price']
+        sum_loads += br['bt']['nLoads']
+        sum_area += br['bt']['width'] * br['bt']['depth']
 
     if sum_loads > 0:
         current_eff = sum_price / sum_loads
@@ -407,8 +418,8 @@ def validate(wh_path, obs_path, ceil_path, bays_path, sol_path):
 
     # Per-type breakdown
     type_counts = {}
-    for x1, y1, x2, y2, corners, b, bt, idx in bay_rects:
-        tid = b['typeId']
+    for br in bay_rects:
+        tid = br['b']['typeId']
         if tid not in type_counts:
             type_counts[tid] = 0
         type_counts[tid] += 1

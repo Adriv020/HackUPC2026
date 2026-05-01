@@ -196,6 +196,7 @@ struct PlacedBay {
     double x, y, rot;
     double x1, y1, x2, y2;  // AABB
     Quad   corners;
+    Quad   bay_corners;
 };
 
 // ---------------------------------------------------------------------------
@@ -474,13 +475,15 @@ public:
         if (it != fcache.end()) return it->second;
 
         double w = bt.width;
-        double d = bt.depth + bt.gap;
-        Quad corners = obb_corners(x, y, w, d, rot);
+        double d_full = bt.depth + bt.gap;
+        double d_bay = bt.depth;
+        Quad corners_f = obb_corners(x, y, w, d_full, rot);
+        Quad corners_b = obb_corners(x, y, w, d_bay, rot);
         double qx1, qy1, qx2, qy2;
-        aabb_from_quad(corners, qx1, qy1, qx2, qy2);
+        aabb_from_quad(corners_f, qx1, qy1, qx2, qy2);
 
         // Warehouse containment
-        if (!wh.obb_inside(corners)) { fcache[key] = false; return false; }
+        if (!wh.obb_inside(corners_f)) { fcache[key] = false; return false; }
 
         // Ceiling
         if (ceil.min_height(qx1, qx2) < bt.threshold - EPS) {
@@ -497,9 +500,10 @@ public:
                 Quad oc = {{
                     {o[0],o[1]}, {o[2],o[1]}, {o[2],o[3]}, {o[0],o[3]}
                 }};
-                if (sat_overlap(corners, oc)) { fcache[key] = false; return false; }
+                if (sat_overlap(corners_f, oc)) { fcache[key] = false; return false; }
             } else if (active.count(idx)) {
-                if (sat_overlap(corners, bays[idx].corners)) {
+                const auto &b = bays.at(idx);
+                if (sat_overlap(corners_b, b.corners) || sat_overlap(b.bay_corners, corners_f)) {
                     fcache[key] = false; return false;
                 }
             }
@@ -511,16 +515,19 @@ public:
     int add(const BayType &bt, double x, double y, double rot) {
         fcache.clear();
         double w = bt.width;
-        double d = bt.depth + bt.gap;
-        Quad   corners = obb_corners(x, y, w, d, rot);
+        double d_full = bt.depth + bt.gap;
+        double d_bay = bt.depth;
+        Quad   corners_f = obb_corners(x, y, w, d_full, rot);
+        Quad   corners_b = obb_corners(x, y, w, d_bay, rot);
         double qx1, qy1, qx2, qy2;
-        aabb_from_quad(corners, qx1, qy1, qx2, qy2);
+        aabb_from_quad(corners_f, qx1, qy1, qx2, qy2);
 
         PlacedBay pb;
         pb.type_id = bt.id;
         pb.x = x; pb.y = y; pb.rot = rot;
         pb.x1 = qx1; pb.y1 = qy1; pb.x2 = qx2; pb.y2 = qy2;
-        pb.corners = corners;
+        pb.corners = corners_f;
+        pb.bay_corners = corners_b;
 
         int idx = next_idx++;
         bays[idx] = pb;
@@ -1197,8 +1204,9 @@ static bool validate(const State &state) {
         }
         for (int j = i+1; j < (int)blist.size(); ++j) {
             int jj = blist[j];
-            if (sat_overlap(bi.corners, state.bays.at(jj).corners)) {
-                std::cerr << "  FAIL: bay " << ii << " overlaps bay " << jj << "\n"; ok = false;
+            const auto &bj = state.bays.at(jj);
+            if (sat_overlap(bi.bay_corners, bj.corners) || sat_overlap(bj.bay_corners, bi.corners)) {
+                std::cerr << "  FAIL: bay " << ii << " overlaps bay " << jj << " (non-gap area)\n"; ok = false;
             }
         }
     }

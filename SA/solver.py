@@ -28,6 +28,7 @@ BT_ID = 0; BT_W = 1; BT_D = 2; BT_H = 3; BT_G = 4; BT_NL = 5; BT_PR = 6; BT_TH =
 
 # PlacedBay tuple indices
 PB_TID = 0; PB_X = 1; PB_Y = 2; PB_R = 3; PB_X1 = 4; PB_Y1 = 5; PB_X2 = 6; PB_Y2 = 7
+PB_AX1 = 8; PB_AY1 = 9; PB_AX2 = 10; PB_AY2 = 11
 
 
 def make_bay_type(id_, w, d, h, g, nl, pr):
@@ -45,8 +46,19 @@ def bay_footprint(bt, rotation):
 
 
 def make_placed_bay(bt, x, y, rotation):
-    w, d = bay_footprint(bt, rotation)
-    return (bt[BT_ID], x, y, rotation, x, y, x + w, y + d)
+    w_f, d_f = bay_footprint(bt, rotation)
+    # Bay area B (no gap)
+    if rotation == 0:
+        ax1, ay1, ax2, ay2 = x, y, x + bt[BT_W], y + bt[BT_D]
+    elif rotation == 90:
+        ax1, ay1, ax2, ay2 = x + bt[BT_G], y, x + bt[BT_G] + bt[BT_D], y + bt[BT_W]
+    elif rotation == 180:
+        ax1, ay1, ax2, ay2 = x, y + bt[BT_G], x + bt[BT_W], y + bt[BT_G] + bt[BT_D]
+    elif rotation == 270:
+        ax1, ay1, ax2, ay2 = x, y, x + bt[BT_D], y + bt[BT_W]
+    else:
+        ax1, ay1, ax2, ay2 = x, y, x + w_f, y + d_f
+    return (bt[BT_ID], x, y, rotation, x, y, x + w_f, y + d_f, ax1, ay1, ax2, ay2)
 
 
 # ---------------------------------------------------------------------------
@@ -303,8 +315,21 @@ class State:
         return current_eff ** (2.0 - (self.sum_area / self.wh_area))
 
     def feasible(self, bt, x, y, rot, excl=None):
-        w, d = bay_footprint(bt, rot)
-        x1, y1, x2, y2 = x, y, x + w, y + d
+        w_f, d_f = bay_footprint(bt, rot)
+        x1, y1, x2, y2 = x, y, x + w_f, y + d_f
+        
+        # Bay area B (no gap)
+        if rot == 0:
+            ax1, ay1, ax2, ay2 = x, y, x + bt[BT_W], y + bt[BT_D]
+        elif rot == 90:
+            ax1, ay1, ax2, ay2 = x + bt[BT_G], y, x + bt[BT_G] + bt[BT_D], y + bt[BT_W]
+        elif rot == 180:
+            ax1, ay1, ax2, ay2 = x, y + bt[BT_G], x + bt[BT_W], y + bt[BT_G] + bt[BT_D]
+        elif rot == 270:
+            ax1, ay1, ax2, ay2 = x, y, x + bt[BT_D], y + bt[BT_W]
+        else:
+            ax1, ay1, ax2, ay2 = x, y, x + w_f, y + d_f
+
         if not self.wh.rect_inside(x1, y1, x2, y2):
             return False
         if self.ceiling.min_height(x1, x2) < bt[BT_TH] - EPS:
@@ -320,9 +345,15 @@ class State:
                     return False
             elif idx in self.active:
                 b = self.bays[idx]
-                ow = min(x2, b[PB_X2]) - max(x1, b[PB_X1])
-                oh = min(y2, b[PB_Y2]) - max(y1, b[PB_Y1])
-                if ow > EPS and oh > EPS:
+                # New bay's rack vs existing bay's footprint
+                ow_a = min(ax2, b[PB_X2]) - max(ax1, b[PB_X1])
+                oh_a = min(ay2, b[PB_Y2]) - max(ay1, b[PB_Y1])
+                if ow_a > EPS and oh_a > EPS:
+                    return False
+                # Existing bay's rack vs new bay's footprint
+                ow_b = min(x2, b[PB_AX2]) - max(x1, b[PB_AX1])
+                oh_b = min(y2, b[PB_AY2]) - max(y1, b[PB_AY1])
+                if ow_b > EPS and oh_b > EPS:
                     return False
         return True
 
@@ -717,10 +748,13 @@ def validate(state):
                 ok = False
         for j, (idx_j, bj) in enumerate(bays_list):
             if j <= i: continue
-            ow = min(bi[PB_X2], bj[PB_X2]) - max(bi[PB_X1], bj[PB_X1])
-            oh = min(bi[PB_Y2], bj[PB_Y2]) - max(bi[PB_Y1], bj[PB_Y1])
-            if ow > EPS and oh > EPS:
-                print(f"  FAIL: bay {idx_i} overlaps bay {idx_j} ({ow:.1f}x{oh:.1f})", file=sys.stderr)
+            # New bay's rack vs existing bay's footprint OR vice-versa
+            ow_a = min(bi[PB_AX2], bj[PB_X2]) - max(bi[PB_AX1], bj[PB_X1])
+            oh_a = min(bi[PB_AY2], bj[PB_Y2]) - max(bi[PB_AY1], bj[PB_Y1])
+            ow_b = min(bi[PB_X2], bj[PB_AX2]) - max(bi[PB_X1], bj[PB_AX1])
+            oh_b = min(bi[PB_Y2], bj[PB_AY2]) - max(bi[PB_Y1], bj[PB_AY1])
+            if (ow_a > EPS and oh_a > EPS) or (ow_b > EPS and oh_b > EPS):
+                print(f"  FAIL: bay {idx_i} overlaps bay {idx_j} (non-gap area)", file=sys.stderr)
                 ok = False
     if ok:
         print(f"  Validation OK ({len(bays_list)} bays)", file=sys.stderr)

@@ -63,6 +63,7 @@ BT_ID = 0; BT_W = 1; BT_D = 2; BT_H = 3; BT_G = 4; BT_NL = 5; BT_PR = 6; BT_TH =
 
 # PlacedBay tuple indices
 PB_TID = 0; PB_X = 1; PB_Y = 2; PB_R = 3; PB_X1 = 4; PB_Y1 = 5; PB_X2 = 6; PB_Y2 = 7; PB_CORNERS = 8
+PB_BAY_CORNERS = 9
 
 
 def make_bay_type(id_, w, d, h, g, nl, pr):
@@ -76,10 +77,12 @@ def bay_footprint(bt, rotation):
 
 def make_placed_bay(bt, x, y, rotation):
     w = bt[BT_W]
-    d = bt[BT_D] + bt[BT_G]
-    corners = get_obb_corners(x, y, w, d, rotation)
-    min_x, min_y, max_x, max_y = aabb_from_corners(corners)
-    return (bt[BT_ID], x, y, rotation, min_x, min_y, max_x, max_y, corners)
+    d_full = bt[BT_D] + bt[BT_G]
+    d_bay = bt[BT_D]
+    corners_f = get_obb_corners(x, y, w, d_full, rotation)
+    corners_b = get_obb_corners(x, y, w, d_bay, rotation)
+    min_x, min_y, max_x, max_y = aabb_from_corners(corners_f)
+    return (bt[BT_ID], x, y, rotation, min_x, min_y, max_x, max_y, corners_f, corners_b)
 
 
 # ---------------------------------------------------------------------------
@@ -390,11 +393,13 @@ class State:
             return self.feasibility_cache[k]
         
         w = bt[BT_W]
-        d = bt[BT_D] + bt[BT_G]
-        corners = get_obb_corners(x, y, w, d, rot)
-        x1, y1, x2, y2 = aabb_from_corners(corners)
+        d_full = bt[BT_D] + bt[BT_G]
+        d_bay = bt[BT_D]
+        corners_f = get_obb_corners(x, y, w, d_full, rot)
+        corners_b = get_obb_corners(x, y, w, d_bay, rot)
+        x1, y1, x2, y2 = aabb_from_corners(corners_f)
         
-        if not self.wh.obb_inside(corners):
+        if not self.wh.obb_inside(corners_f):
             return False
             
         # Check ceiling
@@ -407,10 +412,11 @@ class State:
             if idx < 0:
                 o = self.obs_rects[-(idx+2)]
                 obs_c = ((o[0],o[1]), (o[2],o[1]), (o[2],o[3]), (o[0],o[3]))
-                if sat_overlap(corners, obs_c): return False
+                if sat_overlap(corners_f, obs_c): return False
             elif idx in self.active:
                 b = self.bays[idx]
-                if sat_overlap(corners, b[PB_CORNERS]):
+                # New bay's rack vs existing bay's footprint OR vice-versa
+                if sat_overlap(corners_b, b[PB_CORNERS]) or sat_overlap(b[PB_BAY_CORNERS], corners_f):
                     self.feasibility_cache[k] = False
                     return False
         self.feasibility_cache[k] = True
@@ -1026,8 +1032,9 @@ def validate(state):
                 ok = False
         for j, (idx_j, bj) in enumerate(bays_list):
             if j <= i: continue
-            if sat_overlap(corners_i, bj[PB_CORNERS]):
-                print(f"  FAIL: bay {idx_i} overlaps bay {idx_j}", file=sys.stderr)
+            if sat_overlap(bi[PB_BAY_CORNERS], bj[PB_CORNERS]) or \
+               sat_overlap(bj[PB_BAY_CORNERS], bi[PB_CORNERS]):
+                print(f"  FAIL: bay {idx_i} overlaps bay {idx_j} (non-gap area)", file=sys.stderr)
                 ok = False
     if ok:
         print(f"  Validation OK ({len(bays_list)} bays)", file=sys.stderr)
